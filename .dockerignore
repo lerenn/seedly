@@ -1,0 +1,8 @@
+.data
+.testdata
+web/node_modules
+web/dist
+.git
+.cursor
+*.db
+/tmp

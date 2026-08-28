@@ -1,0 +1,29 @@
+services:
+  seedly:
+    image: ghcr.io/lerenn/seedly:latest
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SEEDLY_ADMIN_USERNAME: admin
+      SEEDLY_ADMIN_PASSWORD: ${SEEDLY_ADMIN_PASSWORD:-changeme}
+      SEEDLY_DB_PATH: /data/db/seedly.db
+      SEEDLY_META_PATH: /data/meta
+      SEEDLY_DOWNLOADS_PATH: /data/downloads
+      SEEDLY_WEB_PATH: /web/dist
+      SEEDLY_LISTEN: ":8080"
+    volumes:
+      - seedly-db:/data/db
+      - seedly-meta:/data/meta
+      - seedly-data:/data/downloads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  seedly-db:
+  seedly-meta:
+  seedly-data:

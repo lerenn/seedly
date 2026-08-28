@@ -1,0 +1,12 @@
+.data/
+*.db
+.DS_Store
+.env
+.env.*
+!.env.example
+*.exe
+/seedly
+.testdata/
+/tmp/
+web/dist/
+web/node_modules/
