@@ -1,4 +1,4 @@
-# seedly
+# Seedly
 
 Open-source seedbox: Go BitTorrent engine ([`anacrolix/torrent`](https://github.com/anacrolix/torrent)), SQLite, and a Vite React UI.
 
