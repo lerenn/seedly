@@ -424,7 +424,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
 
             {error ? <p className="error banner">{error}</p> : null}
 
-            <div className="content">
+            <div className={selected ? 'content' : 'content no-detail'}>
               <div className="torrent-list">
                 {visible.length === 0 ? (
                   <div className="empty">No torrents in this view. Add a .torrent to get started.</div>
@@ -474,93 +474,89 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                 )}
               </div>
 
-              <aside className="detail">
-                {selected ? (
-                  <>
-                    <h2>{selected.name}</h2>
-                    <dl>
+              {selected ? (
+                <aside className="detail">
+                  <h2>{selected.name}</h2>
+                  <dl>
+                    <div>
+                      <dt>Status</dt>
+                      <dd>{selected.status}</dd>
+                    </div>
+                    <div>
+                      <dt>Progress</dt>
+                      <dd>
+                        {formatPct(selected.stats.progress)} ·{' '}
+                        {formatBytes(selected.stats.bytes_completed)} /{' '}
+                        {formatBytes(selected.stats.total_length)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Downloaded</dt>
+                      <dd>{formatBytes(selected.stats.downloaded)}</dd>
+                    </div>
+                    <div>
+                      <dt>Uploaded</dt>
+                      <dd>{formatBytes(selected.stats.uploaded)}</dd>
+                    </div>
+                    <div>
+                      <dt>Ratio</dt>
+                      <dd>{formatRatio(selected.stats.uploaded, selected.stats.downloaded)}</dd>
+                    </div>
+                    <div>
+                      <dt>Peers</dt>
+                      <dd>{selected.stats.peers}</dd>
+                    </div>
+                    <div>
+                      <dt>Info hash</dt>
+                      <dd className="mono">{selected.info_hash}</dd>
+                    </div>
+                    {selected.error_message ? (
                       <div>
-                        <dt>Status</dt>
-                        <dd>{selected.status}</dd>
+                        <dt>Error</dt>
+                        <dd className="error">{selected.error_message}</dd>
                       </div>
-                      <div>
-                        <dt>Progress</dt>
-                        <dd>
-                          {formatPct(selected.stats.progress)} ·{' '}
-                          {formatBytes(selected.stats.bytes_completed)} /{' '}
-                          {formatBytes(selected.stats.total_length)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Downloaded</dt>
-                        <dd>{formatBytes(selected.stats.downloaded)}</dd>
-                      </div>
-                      <div>
-                        <dt>Uploaded</dt>
-                        <dd>{formatBytes(selected.stats.uploaded)}</dd>
-                      </div>
-                      <div>
-                        <dt>Ratio</dt>
-                        <dd>{formatRatio(selected.stats.uploaded, selected.stats.downloaded)}</dd>
-                      </div>
-                      <div>
-                        <dt>Peers</dt>
-                        <dd>{selected.stats.peers}</dd>
-                      </div>
-                      <div>
-                        <dt>Info hash</dt>
-                        <dd className="mono">{selected.info_hash}</dd>
-                      </div>
-                      {selected.error_message ? (
-                        <div>
-                          <dt>Error</dt>
-                          <dd className="error">{selected.error_message}</dd>
-                        </div>
-                      ) : null}
-                    </dl>
-                    <div className="detail-actions">
-                      {selected.status === 'paused' ? (
-                        <button
-                          type="button"
-                          onClick={() => api.resume(selected.id).then(refreshTorrents)}
-                        >
-                          Resume
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => api.pause(selected.id).then(refreshTorrents)}
-                        >
-                          Pause
-                        </button>
-                      )}
-                      {(selected.stats.complete ||
-                        selected.status === 'seeding' ||
-                        selected.completed_at) && (
-                        <a className="button" href={api.downloadUrl(selected.id)}>
-                          Download
-                        </a>
-                      )}
+                    ) : null}
+                  </dl>
+                  <div className="detail-actions">
+                    {selected.status === 'paused' ? (
                       <button
                         type="button"
-                        className="danger"
-                        onClick={() => {
-                          if (confirm(`Delete “${selected.name}”?`)) {
-                            void api.remove(selected.id).then(() => {
-                              setSelectedId(null)
-                              return refreshTorrents()
-                            })
-                          }
-                        }}
+                        onClick={() => api.resume(selected.id).then(refreshTorrents)}
                       >
-                        Delete
+                        Resume
                       </button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="muted">Select a torrent to manage it.</p>
-                )}
-              </aside>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => api.pause(selected.id).then(refreshTorrents)}
+                      >
+                        Pause
+                      </button>
+                    )}
+                    {(selected.stats.complete ||
+                      selected.status === 'seeding' ||
+                      selected.completed_at) && (
+                      <a className="button" href={api.downloadUrl(selected.id)}>
+                        Download
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => {
+                        if (confirm(`Delete “${selected.name}”?`)) {
+                          void api.remove(selected.id).then(() => {
+                            setSelectedId(null)
+                            return refreshTorrents()
+                          })
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </aside>
+              ) : null}
             </div>
           </>
         ) : (
