@@ -157,6 +157,19 @@ func (s *Service) RenameUser(ctx context.Context, actor *db.User, id int64, user
 	return s.db.GetUserByID(ctx, id)
 }
 
+func (s *Service) UpdateDisplayName(ctx context.Context, actor *db.User, id int64, displayName string) (*db.User, error) {
+	if actor.ID != id && actor.Role != db.RoleAdmin {
+		return nil, ErrForbidden
+	}
+	if _, err := s.db.GetUserByID(ctx, id); err != nil {
+		return nil, err
+	}
+	if err := s.db.UpdateDisplayName(ctx, id, displayName); err != nil {
+		return nil, err
+	}
+	return s.db.GetUserByID(ctx, id)
+}
+
 func (s *Service) DeleteUser(ctx context.Context, actor *db.User, id int64) error {
 	if actor.Role != db.RoleAdmin {
 		return ErrForbidden
