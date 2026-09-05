@@ -3,6 +3,7 @@ export type Role = 'admin' | 'user'
 export type User = {
   id: number
   username: string
+  display_name: string
   role: Role
   created_at: string
 }
@@ -84,6 +85,11 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ username }),
     }),
+  updateDisplayName: (id: number, display_name: string) =>
+    request<User>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ display_name }),
+    }),
   deleteUser: (id: number) =>
     request<{ status: string }>(`/api/users/${id}`, { method: 'DELETE' }),
   listTorrents: (ownerId?: number) => {
@@ -116,4 +122,9 @@ export function formatBytes(n: number): string {
 
 export function formatPct(p: number): string {
   return `${Math.min(100, Math.max(0, p * 100)).toFixed(1)}%`
+}
+
+export function formatRatio(uploaded: number, downloaded: number): string {
+  if (downloaded <= 0) return uploaded > 0 ? '∞' : '—'
+  return (uploaded / downloaded).toFixed(2)
 }

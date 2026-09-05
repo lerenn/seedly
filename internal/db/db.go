@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -39,7 +40,20 @@ func Open(path string) (*DB, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := migrate(sqlDB); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &DB{SQL: sqlDB}, nil
+}
+
+func migrate(sqlDB *sql.DB) error {
+	// Add display_name column to existing databases.
+	_, err := sqlDB.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
+	if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	return nil
 }
 
 func (d *DB) Close() error {
@@ -56,6 +70,7 @@ const (
 type User struct {
 	ID           int64     `json:"id"`
 	Username     string    `json:"username"`
+	DisplayName  string    `json:"display_name"`
 	PasswordHash string    `json:"-"`
 	Role         Role      `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -115,8 +130,8 @@ func (d *DB) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	u := &User{}
 	var role string
 	err := d.SQL.QueryRowContext(ctx,
-		`SELECT id, username, password_hash, role, created_at FROM users WHERE id = ?`, id,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt)
+		`SELECT id, username, display_name, password_hash, role, created_at FROM users WHERE id = ?`, id,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash, &role, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +143,8 @@ func (d *DB) GetUserByUsername(ctx context.Context, username string) (*User, err
 	u := &User{}
 	var role string
 	err := d.SQL.QueryRowContext(ctx,
-		`SELECT id, username, password_hash, role, created_at FROM users WHERE username = ?`, username,
-	).Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt)
+		`SELECT id, username, display_name, password_hash, role, created_at FROM users WHERE username = ?`, username,
+	).Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash, &role, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +154,7 @@ func (d *DB) GetUserByUsername(ctx context.Context, username string) (*User, err
 
 func (d *DB) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := d.SQL.QueryContext(ctx,
-		`SELECT id, username, password_hash, role, created_at FROM users ORDER BY username`,
+		`SELECT id, username, display_name, password_hash, role, created_at FROM users ORDER BY username`,
 	)
 	if err != nil {
 		return nil, err
@@ -149,7 +164,7 @@ func (d *DB) ListUsers(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var role string
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &role, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.PasswordHash, &role, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		u.Role = Role(role)
@@ -160,6 +175,11 @@ func (d *DB) ListUsers(ctx context.Context) ([]User, error) {
 
 func (d *DB) UpdateUsername(ctx context.Context, id int64, username string) error {
 	_, err := d.SQL.ExecContext(ctx, `UPDATE users SET username = ? WHERE id = ?`, username, id)
+	return err
+}
+
+func (d *DB) UpdateDisplayName(ctx context.Context, id int64, displayName string) error {
+	_, err := d.SQL.ExecContext(ctx, `UPDATE users SET display_name = ? WHERE id = ?`, displayName, id)
 	return err
 }
 

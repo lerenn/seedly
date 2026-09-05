@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api, formatBytes, formatPct, type DiskUsage, type TorrentStatus, type TorrentView, type User } from './api'
+import { api, formatBytes, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type User } from './api'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
@@ -143,7 +143,8 @@ function Login({
   )
 }
 
-function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
+function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () => void }) {
+  const [user, setUser] = useState(initialUser)
   const [panel, setPanel] = useState<Panel>('torrents')
   const [torrents, setTorrents] = useState<TorrentView[]>([])
   const [users, setUsers] = useState<User[]>([])
@@ -152,6 +153,8 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [disk, setDisk] = useState<DiskUsage | null>(null)
+  const [editingSelfDisplayName, setEditingSelfDisplayName] = useState(false)
+  const [selfDisplayName, setSelfDisplayName] = useState(user.display_name)
 
   const isAdmin = user.role === 'admin'
 
@@ -179,6 +182,17 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
       setDisk(await api.disk())
     } catch {
       /* keep last known */
+    }
+  }
+
+  async function saveSelfDisplayName() {
+    try {
+      const updated = await api.updateDisplayName(user.id, selfDisplayName.trim())
+      setUser(updated)
+      setEditingSelfDisplayName(false)
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update display name failed')
     }
   }
 
@@ -291,12 +305,12 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
               value={viewOwnerId}
               onChange={(e) => setViewOwnerId(Number(e.target.value))}
             >
-              <option value={user.id}>Me ({user.username})</option>
+              <option value={user.id}>Me ({user.display_name || user.username})</option>
               {users
                 .filter((u) => u.id !== user.id)
                 .map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.username}
+                    {u.display_name || u.username}
                   </option>
                 ))}
             </select>
@@ -337,8 +351,44 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
 
           <div className="sidebar-footer">
             <div className="user-meta">
-              <strong>{user.username}</strong>
-              <span className="muted">{user.role}</span>
+              {editingSelfDisplayName ? (
+                <div className="display-name-edit">
+                  <input
+                    value={selfDisplayName}
+                    onChange={(e) => setSelfDisplayName(e.target.value)}
+                    placeholder="Display name"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveSelfDisplayName()
+                      if (e.key === 'Escape') setEditingSelfDisplayName(false)
+                    }}
+                  />
+                  <button type="button" onClick={() => void saveSelfDisplayName()}>
+                    Save
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setEditingSelfDisplayName(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <strong
+                    title="Click to edit display name"
+                    className="editable"
+                    onClick={() => {
+                      setSelfDisplayName(user.display_name)
+                      setEditingSelfDisplayName(true)
+                    }}
+                  >
+                    {user.display_name || user.username}
+                  </strong>
+                  {user.display_name ? (
+                    <span className="muted">{user.username} · {user.role}</span>
+                  ) : (
+                    <span className="muted">{user.role}</span>
+                  )}
+                </>
+              )}
             </div>
             <button type="button" className="ghost" onClick={onLogout}>
               Sign out
@@ -387,6 +437,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                         <th className="col-progress">Progress</th>
                         <th className="col-num">↓</th>
                         <th className="col-num">↑</th>
+                        <th className="col-num">Ratio</th>
                         <th className="col-peers">Peers</th>
                         <th className="col-size">Size</th>
                       </tr>
@@ -413,6 +464,7 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                           </td>
                           <td className="col-num">{formatBytes(t.stats.downloaded)}</td>
                           <td className="col-num">{formatBytes(t.stats.uploaded)}</td>
+                          <td className="col-num">{formatRatio(t.stats.uploaded, t.stats.downloaded)}</td>
                           <td className="col-peers">{t.stats.peers}</td>
                           <td className="col-size">{formatBytes(t.stats.total_length)}</td>
                         </tr>
@@ -446,6 +498,10 @@ function Dashboard({ user, onLogout }: { user: User; onLogout: () => void }) {
                       <div>
                         <dt>Uploaded</dt>
                         <dd>{formatBytes(selected.stats.uploaded)}</dd>
+                      </div>
+                      <div>
+                        <dt>Ratio</dt>
+                        <dd>{formatRatio(selected.stats.uploaded, selected.stats.downloaded)}</dd>
                       </div>
                       <div>
                         <dt>Peers</dt>
@@ -537,6 +593,8 @@ function UsersPanel({
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'user' as 'user' | 'admin' })
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
+  const [editingDisplayNameId, setEditingDisplayNameId] = useState<number | null>(null)
+  const [editDisplayName, setEditDisplayName] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function createUser(e: FormEvent) {
@@ -563,6 +621,20 @@ function UsersPanel({
       await onChange()
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Rename failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveDisplayName(id: number) {
+    setBusy(true)
+    try {
+      await api.updateDisplayName(id, editDisplayName.trim())
+      setEditingDisplayNameId(null)
+      onError('')
+      await onChange()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Update display name failed')
     } finally {
       setBusy(false)
     }
@@ -638,6 +710,7 @@ function UsersPanel({
               <thead>
                 <tr>
                   <th>Username</th>
+                  <th>Display Name</th>
                   <th>Role</th>
                   <th>Created</th>
                   <th>Actions</th>
@@ -659,6 +732,46 @@ function UsersPanel({
                           {u.id === currentUser.id ? (
                             <span className="muted"> · you</span>
                           ) : null}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {editingDisplayNameId === u.id ? (
+                        <div className="detail-actions">
+                          <input
+                            value={editDisplayName}
+                            onChange={(e) => setEditDisplayName(e.target.value)}
+                            placeholder="Display name"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void saveDisplayName(u.id)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => setEditingDisplayNameId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="name">
+                          {u.display_name || <span className="muted">—</span>}
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={() => {
+                              setEditingDisplayNameId(u.id)
+                              setEditDisplayName(u.display_name)
+                            }}
+                          >
+                            Edit
+                          </button>
                         </div>
                       )}
                     </td>

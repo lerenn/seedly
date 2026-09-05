@@ -208,23 +208,50 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
+		Username    *string `json:"username"`
+		DisplayName *string `json:"display_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	u, err := s.auth.RenameUser(r.Context(), actor, id, body.Username)
-	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			writeError(w, http.StatusForbidden, "forbidden")
+
+	var u *db.User
+
+	if body.Username != nil {
+		u, err = s.auth.RenameUser(r.Context(), actor, id, *body.Username)
+		if err != nil {
+			if errors.Is(err, auth.ErrForbidden) {
+				writeError(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "user not found")
+				return
+			}
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusNotFound, "user not found")
+	}
+
+	if body.DisplayName != nil {
+		u, err = s.auth.UpdateDisplayName(r.Context(), actor, id, *body.DisplayName)
+		if err != nil {
+			if errors.Is(err, auth.ErrForbidden) {
+				writeError(w, http.StatusForbidden, "forbidden")
+				return
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "user not found")
+				return
+			}
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusBadRequest, err.Error())
+	}
+
+	if u == nil {
+		writeError(w, http.StatusBadRequest, "no fields to update")
 		return
 	}
 	writeJSON(w, http.StatusOK, u)
