@@ -476,7 +476,18 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
 
               {selected ? (
                 <aside className="detail">
-                  <h2>{selected.name}</h2>
+                  <div className="detail-header">
+                    <h2>{selected.name}</h2>
+                    <button
+                      type="button"
+                      className="detail-close"
+                      aria-label="Close details"
+                      title="Close"
+                      onClick={() => setSelectedId(null)}
+                    >
+                      ×
+                    </button>
+                  </div>
                   <dl>
                     <div>
                       <dt>Status</dt>

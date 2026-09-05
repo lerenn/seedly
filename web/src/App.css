@@ -540,10 +540,34 @@ tbody tr.selected {
   overflow: auto;
 }
 
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
 .detail h2 {
   font-size: 1rem;
   margin-bottom: 0.85rem;
   word-break: break-word;
+}
+
+.detail-header h2 {
+  flex: 1;
+  min-width: 0;
+}
+
+button.detail-close {
+  flex: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 0.25rem;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+button.detail-close:hover {
+  color: var(--ink);
 }
 
 .detail dl {
