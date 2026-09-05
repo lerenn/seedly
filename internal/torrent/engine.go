@@ -295,7 +295,7 @@ func (e *Engine) view(rec *db.Torrent) *TorrentView {
 	}
 	v.Stats = LiveStats{
 		Progress:       progress,
-		Downloaded:     completed,
+		Downloaded:     stats.BytesReadData.Int64(),
 		Uploaded:       stats.BytesWrittenData.Int64(),
 		DownloadRate:   0,
 		UploadRate:     0,
