@@ -405,6 +405,10 @@ h2 {
   min-height: 0;
 }
 
+.content.no-detail {
+  grid-template-columns: 1fr;
+}
+
 .torrent-list {
   overflow: auto;
   min-width: 0;
