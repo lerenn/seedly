@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api, formatBytes, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type UploadFailure, type User } from './api'
+import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type UploadFailure, type User } from './api'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
@@ -468,6 +468,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                         <th className="col-num">Ratio</th>
                         <th className="col-peers">Peers</th>
                         <th className="col-size">Size</th>
+                        <th className="col-added">Added</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -495,6 +496,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                           <td className="col-num">{formatRatio(t.stats.uploaded, t.stats.downloaded)}</td>
                           <td className="col-peers">{t.stats.peers}</td>
                           <td className="col-size">{formatBytes(t.stats.total_length)}</td>
+                          <td className="col-added">{formatDateTime(t.created_at)}</td>
                         </tr>
                       ))}
                     </tbody>
