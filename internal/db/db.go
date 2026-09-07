@@ -251,6 +251,15 @@ func nullTime(t *time.Time) any {
 	return t.UTC()
 }
 
+func (d *DB) TorrentExists(ctx context.Context, ownerID int64, infoHash string) (bool, error) {
+	var n int64
+	err := d.SQL.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM torrents WHERE owner_id = ? AND info_hash = ?`,
+		ownerID, infoHash,
+	).Scan(&n)
+	return n > 0, err
+}
+
 func (d *DB) GetTorrentByID(ctx context.Context, id int64) (*Torrent, error) {
 	t := &Torrent{}
 	var status string
