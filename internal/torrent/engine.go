@@ -109,6 +109,16 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 	}
 	infoHash := mi.HashInfoBytes().HexString()
 
+	// Meta and data paths are keyed by owner + info hash, so a re-add would write
+	// over an existing torrent's files. Reject it up front instead.
+	exists, err := e.db.TorrentExists(ctx, ownerID, infoHash)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("%q is already added", info.Name)
+	}
+
 	metaFile := filepath.Join(e.metaPath, fmt.Sprintf("%d_%s.torrent", ownerID, infoHash))
 	dataDir := filepath.Join(e.downloadsPath, fmt.Sprintf("%d_%s", ownerID, infoHash))
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -127,7 +137,10 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 		Status:   db.StatusDownloading,
 	})
 	if err != nil {
-		_ = os.Remove(metaFile)
+		// Keep the meta file if a concurrent add already claimed this info hash.
+		if dup, checkErr := e.db.TorrentExists(ctx, ownerID, infoHash); checkErr != nil || !dup {
+			_ = os.Remove(metaFile)
+		}
 		return nil, err
 	}
 

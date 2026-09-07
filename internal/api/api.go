@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -305,33 +307,64 @@ func (s *Server) handleListTorrents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+type uploadFailure struct {
+	Filename string `json:"filename"`
+	Error    string `json:"error"`
+}
+
+type uploadResult struct {
+	Added  []torrent.TorrentView `json:"added"`
+	Failed []uploadFailure       `json:"failed"`
+	Error  string                `json:"error,omitempty"`
+}
+
 func (s *Server) handleUploadTorrent(w http.ResponseWriter, r *http.Request) {
 	user := currentUser(r)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid multipart form")
 		return
 	}
-	file, header, err := r.FormFile("torrent")
-	if err != nil {
+	headers := r.MultipartForm.File["torrent"]
+	if len(headers) == 0 {
 		writeError(w, http.StatusBadRequest, "torrent file required")
 		return
 	}
-	defer file.Close()
-	if !strings.HasSuffix(strings.ToLower(header.Filename), ".torrent") {
-		writeError(w, http.StatusBadRequest, "file must be .torrent")
+
+	result := uploadResult{Added: []torrent.TorrentView{}, Failed: []uploadFailure{}}
+	for _, header := range headers {
+		view, err := s.addUploadedTorrent(r, user.ID, header)
+		if err != nil {
+			result.Failed = append(result.Failed, uploadFailure{Filename: header.Filename, Error: err.Error()})
+			continue
+		}
+		result.Added = append(result.Added, *view)
+	}
+
+	if len(result.Added) == 0 {
+		result.Error = result.Failed[0].Error
+		if len(result.Failed) > 1 {
+			result.Error = fmt.Sprintf("%d torrents failed: %s", len(result.Failed), result.Failed[0].Error)
+		}
+		writeJSON(w, http.StatusBadRequest, result)
 		return
 	}
+	writeJSON(w, http.StatusCreated, result)
+}
+
+func (s *Server) addUploadedTorrent(r *http.Request, ownerID int64, header *multipart.FileHeader) (*torrent.TorrentView, error) {
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".torrent") {
+		return nil, errors.New("file must be .torrent")
+	}
+	file, err := header.Open()
+	if err != nil {
+		return nil, errors.New("open failed")
+	}
+	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, 16<<20))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "read failed")
-		return
+		return nil, errors.New("read failed")
 	}
-	view, err := s.engine.AddFromTorrentFile(r.Context(), user.ID, data)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, view)
+	return s.engine.AddFromTorrentFile(r.Context(), ownerID, data)
 }
 
 func (s *Server) handleGetTorrent(w http.ResponseWriter, r *http.Request) {

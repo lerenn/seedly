@@ -35,6 +35,17 @@ export type TorrentView = {
   stats: LiveStats
 }
 
+export type UploadFailure = {
+  filename: string
+  error: string
+}
+
+export type UploadResult = {
+  added: TorrentView[]
+  failed: UploadFailure[]
+  error?: string
+}
+
 export type DiskUsage = {
   path: string
   total_bytes: number
@@ -96,10 +107,19 @@ export const api = {
     const q = ownerId != null ? `?owner_id=${ownerId}` : ''
     return request<TorrentView[]>(`/api/torrents${q}`)
   },
-  uploadTorrent: (file: File) => {
+  uploadTorrents: async (files: File[]): Promise<UploadResult> => {
     const fd = new FormData()
-    fd.append('torrent', file)
-    return request<TorrentView>('/api/torrents', { method: 'POST', body: fd })
+    for (const file of files) fd.append('torrent', file)
+    const res = await fetch('/api/torrents', { method: 'POST', credentials: 'include', body: fd })
+    let body: Partial<UploadResult> | null = null
+    try {
+      body = (await res.json()) as Partial<UploadResult>
+    } catch {
+      /* ignore */
+    }
+    // A rejected batch still carries the per-file `failed` list, so surface it instead of throwing.
+    if (body?.added || body?.failed) return { added: body.added ?? [], failed: body.failed ?? [] }
+    throw new Error(body?.error || res.statusText || 'Upload failed')
   },
   pause: (id: number) => request<TorrentView>(`/api/torrents/${id}/pause`, { method: 'POST' }),
   resume: (id: number) => request<TorrentView>(`/api/torrents/${id}/resume`, { method: 'POST' }),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api, formatBytes, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type User } from './api'
+import { api, formatBytes, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type UploadFailure, type User } from './api'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
@@ -152,6 +152,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [error, setError] = useState('')
+  const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([])
   const [disk, setDisk] = useState<DiskUsage | null>(null)
   const [editingSelfDisplayName, setEditingSelfDisplayName] = useState(false)
   const [selfDisplayName, setSelfDisplayName] = useState(user.display_name)
@@ -234,13 +235,16 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
 
   const selected = torrents.find((t) => t.id === selectedId) ?? null
 
-  async function onUpload(file: File | null) {
-    if (!file) return
+  async function onUpload(files: File[]) {
+    if (files.length === 0) return
+    setUploadFailures([])
     try {
-      await api.uploadTorrent(file)
+      const result = await api.uploadTorrents(files)
+      // refreshTorrents clears `error`, so report failures afterwards.
       await refreshTorrents()
+      setUploadFailures(result.failed)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
+      setUploadFailures([{ filename: 'Upload', error: err instanceof Error ? err.message : 'failed' }])
     }
   }
 
@@ -409,13 +413,13 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                 </span>
               </div>
               <label className="add-torrent">
-                <span>+ Add torrent</span>
+                <span>+ Add torrents</span>
                 <input
                   type="file"
+                  multiple
                   accept=".torrent,application/x-bittorrent"
                   onChange={(e) => {
-                    const f = e.target.files?.[0] ?? null
-                    void onUpload(f)
+                    void onUpload(Array.from(e.target.files ?? []))
                     e.target.value = ''
                   }}
                 />
@@ -423,6 +427,30 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
             </header>
 
             {error ? <p className="error banner">{error}</p> : null}
+
+            {uploadFailures.length > 0 ? (
+              <div className="error banner upload-failures">
+                <button
+                  type="button"
+                  className="upload-failures-dismiss"
+                  onClick={() => setUploadFailures([])}
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+                <strong>
+                  {uploadFailures.length} torrent{uploadFailures.length > 1 ? 's' : ''} could not be
+                  added
+                </strong>
+                <ul>
+                  {uploadFailures.map((f, i) => (
+                    <li key={`${f.filename}-${i}`}>
+                      {f.filename}: {f.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div className={selected ? 'content' : 'content no-detail'}>
               <div className="torrent-list">
