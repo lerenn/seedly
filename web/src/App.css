@@ -477,6 +477,13 @@ tbody tr.selected {
   white-space: nowrap;
 }
 
+.col-added {
+  width: 11rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
 .name {
   font-weight: 560;
 }

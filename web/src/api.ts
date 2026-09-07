@@ -148,3 +148,15 @@ export function formatRatio(uploaded: number, downloaded: number): string {
   if (downloaded <= 0) return uploaded > 0 ? '∞' : '—'
   return (uploaded / downloaded).toFixed(2)
 }
+
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
