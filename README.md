@@ -54,7 +54,7 @@ Open http://localhost:8080 and sign in with:
 
 - Local username/password sessions; first admin bootstrapped from env when the DB is empty
 - Users see only their torrents; admins can switch **View as** another user
-- Access your torrent files over FTPS and from the file list in a torrent's detail panel (read-only for members, read-write for admins)
+- Access your torrent files over FTPS and from the file list in a torrent's detail panel (read-only for members; admins can also rename and delete)
 - Add torrents via `.torrent` upload, one or several files at a time (per-file errors are reported without blocking the rest)
 - Progress / status / peers / downloaded / uploaded with pause, resume, delete
 - Completed torrents keep seeding until paused or deleted

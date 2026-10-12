@@ -188,19 +188,6 @@ export const api = {
     request<FileListing>(`/api/torrents/${torrentId}/files?${fileQuery(path)}`),
   fileDownloadUrl: (torrentId: number, path: string) =>
     `/api/torrents/${torrentId}/files/download?${fileQuery(path)}`,
-  uploadFiles: (torrentId: number, dir: string, files: File[]) => {
-    const fd = new FormData()
-    for (const f of files) fd.append('files', f)
-    return request<{ uploaded: number }>(`/api/torrents/${torrentId}/files/upload?${fileQuery(dir)}`, {
-      method: 'POST',
-      body: fd,
-    })
-  },
-  mkdir: (torrentId: number, path: string) =>
-    request<{ status: string }>(`/api/torrents/${torrentId}/files/mkdir`, {
-      method: 'POST',
-      body: JSON.stringify({ path }),
-    }),
   renameFile: (torrentId: number, from: string, to: string) =>
     request<{ status: string }>(`/api/torrents/${torrentId}/files/rename`, {
       method: 'POST',
