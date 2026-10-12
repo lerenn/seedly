@@ -48,10 +48,16 @@ func Open(path string) (*DB, error) {
 }
 
 func migrate(sqlDB *sql.DB) error {
-	// Add display_name column to existing databases.
-	_, err := sqlDB.Exec(`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`)
-	if err != nil && !strings.Contains(err.Error(), "duplicate column") {
-		return err
+	// Add display_name and transfer counter columns to existing databases.
+	for _, stmt := range []string{
+		`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE torrents ADD COLUMN uploaded_bytes INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE torrents ADD COLUMN downloaded_bytes INTEGER NOT NULL DEFAULT 0`,
+	} {
+		_, err := sqlDB.Exec(stmt)
+		if err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return err
+		}
 	}
 	return nil
 }
@@ -103,6 +109,10 @@ type Torrent struct {
 	ErrorMessage string        `json:"error_message,omitempty"`
 	CreatedAt    time.Time     `json:"created_at"`
 	CompletedAt  *time.Time    `json:"completed_at,omitempty"`
+	// Cumulative transfer totals persisted across restarts; live session bytes
+	// not yet flushed are added on top by the torrent engine.
+	UploadedBytes   int64 `json:"-"`
+	DownloadedBytes int64 `json:"-"`
 }
 
 func (d *DB) CountUsers(ctx context.Context) (int64, error) {
@@ -265,9 +275,9 @@ func (d *DB) GetTorrentByID(ctx context.Context, id int64) (*Torrent, error) {
 	var status string
 	var completedAt sql.NullTime
 	err := d.SQL.QueryRowContext(ctx, `
-		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at
+		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at, uploaded_bytes, downloaded_bytes
 		FROM torrents WHERE id = ?`, id,
-	).Scan(&t.ID, &t.OwnerID, &t.InfoHash, &t.Name, &t.MetaPath, &t.DataPath, &status, &t.ErrorMessage, &t.CreatedAt, &completedAt)
+	).Scan(&t.ID, &t.OwnerID, &t.InfoHash, &t.Name, &t.MetaPath, &t.DataPath, &status, &t.ErrorMessage, &t.CreatedAt, &completedAt, &t.UploadedBytes, &t.DownloadedBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +291,7 @@ func (d *DB) GetTorrentByID(ctx context.Context, id int64) (*Torrent, error) {
 
 func (d *DB) ListTorrentsByOwner(ctx context.Context, ownerID int64) ([]Torrent, error) {
 	rows, err := d.SQL.QueryContext(ctx, `
-		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at
+		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at, uploaded_bytes, downloaded_bytes
 		FROM torrents WHERE owner_id = ? ORDER BY created_at DESC`, ownerID,
 	)
 	if err != nil {
@@ -293,7 +303,7 @@ func (d *DB) ListTorrentsByOwner(ctx context.Context, ownerID int64) ([]Torrent,
 
 func (d *DB) ListAllTorrents(ctx context.Context) ([]Torrent, error) {
 	rows, err := d.SQL.QueryContext(ctx, `
-		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at
+		SELECT id, owner_id, info_hash, name, meta_path, data_path, status, COALESCE(error_message, ''), created_at, completed_at, uploaded_bytes, downloaded_bytes
 		FROM torrents ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -309,7 +319,7 @@ func scanTorrents(rows *sql.Rows) ([]Torrent, error) {
 		var t Torrent
 		var status string
 		var completedAt sql.NullTime
-		if err := rows.Scan(&t.ID, &t.OwnerID, &t.InfoHash, &t.Name, &t.MetaPath, &t.DataPath, &status, &t.ErrorMessage, &t.CreatedAt, &completedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.OwnerID, &t.InfoHash, &t.Name, &t.MetaPath, &t.DataPath, &status, &t.ErrorMessage, &t.CreatedAt, &completedAt, &t.UploadedBytes, &t.DownloadedBytes); err != nil {
 			return nil, err
 		}
 		t.Status = TorrentStatus(status)
@@ -326,6 +336,15 @@ func (d *DB) UpdateTorrentStatus(ctx context.Context, id int64, status TorrentSt
 	_, err := d.SQL.ExecContext(ctx, `
 		UPDATE torrents SET status = ?, error_message = ?, completed_at = COALESCE(?, completed_at) WHERE id = ?`,
 		string(status), errMsg, nullTime(completedAt), id,
+	)
+	return err
+}
+
+// AddTorrentTransfer increments a torrent's persisted transfer totals.
+func (d *DB) AddTorrentTransfer(ctx context.Context, id, uploaded, downloaded int64) error {
+	_, err := d.SQL.ExecContext(ctx, `
+		UPDATE torrents SET uploaded_bytes = uploaded_bytes + ?, downloaded_bytes = downloaded_bytes + ? WHERE id = ?`,
+		uploaded, downloaded, id,
 	)
 	return err
 }
