@@ -20,6 +20,9 @@ type Source struct {
 	cert    *tls.Certificate
 	certMod time.Time
 	keyMod  time.Time
+
+	cfgOnce sync.Once
+	cfg     *tls.Config
 }
 
 // FromFiles loads the key pair and returns a reloading source.
@@ -71,13 +74,19 @@ func (s *Source) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) 
 	return s.current()
 }
 
-// Config returns a server TLS config backed by the source.
+// Config returns a server TLS config backed by the source. The same instance
+// is returned every time: FTP data connections must resume the control
+// connection's TLS session, which only works when both use the same config
+// (and therefore the same session ticket keys).
 func (s *Source) Config() (*tls.Config, error) {
 	if _, err := s.current(); err != nil {
 		return nil, err
 	}
-	return &tls.Config{
-		MinVersion:     tls.VersionTLS12,
-		GetCertificate: s.GetCertificate,
-	}, nil
+	s.cfgOnce.Do(func() {
+		s.cfg = &tls.Config{
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: s.GetCertificate,
+		}
+	})
+	return s.cfg, nil
 }

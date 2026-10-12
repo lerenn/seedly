@@ -120,3 +120,20 @@ func TestFromACMEValidatesOptions(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestConfigIsShared(t *testing.T) {
+	dir := t.TempDir()
+	cf, kf := filepath.Join(dir, "c.pem"), filepath.Join(dir, "k.pem")
+	c, k := genPair(t, "a.example", time.Now().Add(time.Hour))
+	os.WriteFile(cf, c, 0o644)
+	os.WriteFile(kf, k, 0o600)
+	src, err := FromFiles(cf, kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := src.Config()
+	b, _ := src.Config()
+	if a != b {
+		t.Fatal("Config must return the same instance so TLS sessions can be resumed")
+	}
+}

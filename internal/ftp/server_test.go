@@ -102,10 +102,10 @@ func setup(t *testing.T, opts Options) env {
 }
 
 func tlsOpts(t *testing.T) Options {
-	cert := selfSigned(t)
-	return Options{TLS: func() (*tls.Config, error) {
-		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
-	}}
+	cfg := &tls.Config{Certificates: []tls.Certificate{selfSigned(t)}, MinVersion: tls.VersionTLS12}
+	// Same instance every time, like tlscert.Source: data connections must be
+	// able to resume the control connection's session.
+	return Options{TLS: func() (*tls.Config, error) { return cfg, nil }}
 }
 
 func dial(t *testing.T, addr, user string, withTLS bool) *jftp.ServerConn {
@@ -242,5 +242,36 @@ func TestParsePortRange(t *testing.T) {
 		if _, _, err := ParsePortRange(bad); err == nil {
 			t.Errorf("%q accepted", bad)
 		}
+	}
+}
+
+func TestDataConnectionResumesTLSSession(t *testing.T) {
+	e := setup(t, tlsOpts(t))
+	var handshakes, resumed int
+	cfg := &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         "localhost", // session cache key shared by control and data connections
+		ClientSessionCache: tls.NewLRUClientSessionCache(8),
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			handshakes++
+			if cs.DidResume {
+				resumed++
+			}
+			return nil
+		},
+	}
+	c, err := jftp.Dial(e.addr, jftp.DialWithTimeout(5*time.Second), jftp.DialWithExplicitTLS(cfg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Quit()
+	if err := c.Login("member", "pw-member"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.List("/"); err != nil {
+		t.Fatal(err)
+	}
+	if handshakes < 2 || resumed < 1 {
+		t.Fatalf("data connection did not resume the session (handshakes=%d resumed=%d)", handshakes, resumed)
 	}
 }
