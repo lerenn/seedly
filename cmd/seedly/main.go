@@ -16,6 +16,8 @@ import (
 	"github.com/lerenn/seedly/internal/auth"
 	"github.com/lerenn/seedly/internal/config"
 	"github.com/lerenn/seedly/internal/db"
+	"github.com/lerenn/seedly/internal/ftp"
+	"github.com/lerenn/seedly/internal/tlscert"
 	"github.com/lerenn/seedly/internal/torrent"
 )
 
@@ -49,6 +51,15 @@ func main() {
 		log.Fatalf("reload torrents: %v", err)
 	}
 
+	if cfg.FTPEnabled {
+		ftpSrv, err := startFTP(ctx, cfg, authSvc, database)
+		if err != nil {
+			log.Fatalf("ftp: %v", err)
+		}
+		defer ftpSrv.Close()
+		log.Printf("seedly ftp listening on %s", ftpSrv.Addr())
+	}
+
 	webHandler := spaHandler(cfg.WebPath)
 	srv := api.New(cfg, authSvc, database, engine, webHandler)
 
@@ -72,6 +83,42 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
+}
+
+func startFTP(ctx context.Context, cfg config.Config, authSvc *auth.Service, database *db.DB) (*ftp.Server, error) {
+	opts := ftp.Options{
+		ListenAddr:     cfg.FTPListen,
+		PublicHost:     cfg.FTPPublicHost,
+		AllowPlaintext: cfg.FTPAllowPlaintext,
+	}
+	start, end, err := ftp.ParsePortRange(cfg.FTPPassivePorts)
+	if err != nil {
+		return nil, err
+	}
+	opts.PassiveStart, opts.PassiveEnd = start, end
+
+	var src *tlscert.Source
+	switch {
+	case cfg.ACMEDomain != "":
+		src, err = tlscert.FromACME(ctx, tlscert.ACMEOptions{
+			Domain:      cfg.ACMEDomain,
+			Email:       cfg.ACMEEmail,
+			DNSProvider: cfg.ACMEDNSProvider,
+			CacheDir:    cfg.ACMECacheDir,
+			CAURL:       cfg.ACMECAURL,
+		})
+	case cfg.FTPTLSCertFile != "" || cfg.FTPTLSKeyFile != "":
+		src, err = tlscert.FromFiles(cfg.FTPTLSCertFile, cfg.FTPTLSKeyFile)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if src != nil {
+		opts.TLS = src.Config
+	} else if !cfg.FTPAllowPlaintext {
+		return nil, errors.New("no TLS configured: set SEEDLY_FTP_TLS_ACME_DOMAIN or SEEDLY_FTP_TLS_CERT_FILE/KEY_FILE, or SEEDLY_FTP_ALLOW_PLAINTEXT=true")
+	}
+	return ftp.Start(opts, authSvc, database)
 }
 
 func spaHandler(webPath string) http.Handler {

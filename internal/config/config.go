@@ -8,16 +8,29 @@ import (
 )
 
 type Config struct {
-	ListenAddr     string
-	DBPath         string
-	MetaPath       string
-	DownloadsPath  string
-	WebPath        string
-	AdminUsername  string
-	AdminPassword  string
-	SessionTTL     time.Duration
-	CookieSecure   bool
-	CookieName     string
+	ListenAddr    string
+	DBPath        string
+	MetaPath      string
+	DownloadsPath string
+	WebPath       string
+	AdminUsername string
+	AdminPassword string
+	SessionTTL    time.Duration
+	CookieSecure  bool
+	CookieName    string
+
+	FTPEnabled        bool
+	FTPListen         string
+	FTPPublicHost     string
+	FTPPassivePorts   string
+	FTPAllowPlaintext bool
+	FTPTLSCertFile    string
+	FTPTLSKeyFile     string
+	ACMEDomain        string
+	ACMEEmail         string
+	ACMEDNSProvider   string
+	ACMECacheDir      string
+	ACMECAURL         string
 }
 
 func Load() (Config, error) {
@@ -32,6 +45,19 @@ func Load() (Config, error) {
 		CookieName:    envOr("SEEDLY_COOKIE_NAME", "seedly_session"),
 		CookieSecure:  envBool("SEEDLY_COOKIE_SECURE", false),
 		SessionTTL:    envDuration("SEEDLY_SESSION_TTL", 7*24*time.Hour),
+
+		FTPEnabled:        envBool("SEEDLY_FTP_ENABLED", false),
+		FTPListen:         envOr("SEEDLY_FTP_LISTEN", ":2121"),
+		FTPPublicHost:     os.Getenv("SEEDLY_FTP_PUBLIC_HOST"),
+		FTPPassivePorts:   envOr("SEEDLY_FTP_PASV_PORTS", "30000-30009"),
+		FTPAllowPlaintext: envBool("SEEDLY_FTP_ALLOW_PLAINTEXT", false),
+		FTPTLSCertFile:    os.Getenv("SEEDLY_FTP_TLS_CERT_FILE"),
+		FTPTLSKeyFile:     os.Getenv("SEEDLY_FTP_TLS_KEY_FILE"),
+		ACMEDomain:        os.Getenv("SEEDLY_FTP_TLS_ACME_DOMAIN"),
+		ACMEEmail:         os.Getenv("SEEDLY_FTP_TLS_ACME_EMAIL"),
+		ACMEDNSProvider:   os.Getenv("SEEDLY_FTP_TLS_ACME_DNS_PROVIDER"),
+		ACMECacheDir:      envOr("SEEDLY_FTP_TLS_ACME_CACHE_DIR", "/data/certs"),
+		ACMECAURL:         os.Getenv("SEEDLY_FTP_TLS_ACME_CA_URL"),
 	}
 	if cfg.AdminPassword == "" {
 		return cfg, fmt.Errorf("SEEDLY_ADMIN_PASSWORD is required")

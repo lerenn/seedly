@@ -761,3 +761,100 @@ button.danger {
 .users-form.rule-form {
   grid-template-columns: 1fr auto;
 }
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.files-toggle.active {
+  border-color: var(--accent);
+}
+
+.content.files-open {
+  grid-template-columns: 1fr 420px;
+}
+
+.fm-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.fm-crumbs button {
+  background: transparent;
+  color: var(--muted);
+  padding: 0 0.2rem;
+}
+
+.fm-crumbs button:hover {
+  color: var(--ink);
+}
+
+.fm-actions {
+  margin: 0 0 0.75rem;
+}
+
+.fm-upload {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.fm-upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.fm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fm-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.fm-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  word-break: break-word;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.fm-size {
+  flex: none;
+  font-size: 0.78rem;
+}
+
+.fm-row-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex: none;
+}
+
+.fm-row-actions button {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.fm-note {
+  margin: 0 0 0.75rem;
+}

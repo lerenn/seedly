@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TrackerMode, type TrackerOverview, type TrackerRow, type TrackerRule, type TorrentView, type UploadFailure, type User } from './api'
+import { FileManager } from './FileManager'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
@@ -151,6 +152,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
   const [viewOwnerId, setViewOwnerId] = useState<number>(user.id)
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [filesOpen, setFilesOpen] = useState(false)
   const [error, setError] = useState('')
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([])
   const [disk, setDisk] = useState<DiskUsage | null>(null)
@@ -421,18 +423,31 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                   {filter !== 'all' ? ` · ${filter}` : ''}
                 </span>
               </div>
-              <label className="add-torrent">
-                <span>+ Add torrents</span>
-                <input
-                  type="file"
-                  multiple
-                  accept=".torrent,application/x-bittorrent"
-                  onChange={(e) => {
-                    void onUpload(Array.from(e.target.files ?? []))
-                    e.target.value = ''
+              <div className="topbar-actions">
+                <label className="add-torrent">
+                  <span>+ Add torrents</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".torrent,application/x-bittorrent"
+                    onChange={(e) => {
+                      void onUpload(Array.from(e.target.files ?? []))
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={filesOpen ? 'files-toggle active' : 'files-toggle'}
+                  aria-pressed={filesOpen}
+                  onClick={() => {
+                    setFilesOpen((o) => !o)
+                    setSelectedId(null)
                   }}
-                />
-              </label>
+                >
+                  Files
+                </button>
+              </div>
             </header>
 
             {error ? <p className="error banner">{error}</p> : null}
@@ -461,7 +476,11 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
               </div>
             ) : null}
 
-            <div className={selected ? 'content' : 'content no-detail'}>
+            <div
+              className={
+                filesOpen ? 'content files-open' : selected ? 'content' : 'content no-detail'
+              }
+            >
               <div className="torrent-list">
                 {visible.length === 0 ? (
                   <div className="empty">No torrents in this view. Add a .torrent to get started.</div>
@@ -485,7 +504,10 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                         <tr
                           key={t.id}
                           className={selectedId === t.id ? 'selected' : undefined}
-                          onClick={() => setSelectedId(t.id)}
+                          onClick={() => {
+                            setSelectedId(t.id)
+                            setFilesOpen(false)
+                          }}
                         >
                           <td className="col-name">
                             <div className="name">{t.name}</div>
@@ -513,7 +535,13 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                 )}
               </div>
 
-              {selected ? (
+              {filesOpen ? (
+                <FileManager
+                  key={viewOwnerId}
+                  ownerId={isAdmin && viewOwnerId !== user.id ? viewOwnerId : undefined}
+                  onClose={() => setFilesOpen(false)}
+                />
+              ) : selected ? (
                 <aside className="detail">
                   <div className="detail-header">
                     <h2>{selected.name}</h2>

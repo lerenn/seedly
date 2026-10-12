@@ -109,3 +109,21 @@ Then upload `.testdata/hello.torrent` in the UI while the webseed server is runn
 | `SEEDLY_WEB_PATH` | `web/dist` | Built SPA directory |
 | `SEEDLY_SESSION_TTL` | `168h` | Session lifetime |
 | `SEEDLY_COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
+| `SEEDLY_FTP_ENABLED` | `false` | Enable the FTP/FTPS server |
+| `SEEDLY_FTP_LISTEN` | `:2121` | FTP control listen address |
+| `SEEDLY_FTP_PUBLIC_HOST` | *(empty)* | IP or hostname announced in passive replies |
+| `SEEDLY_FTP_PASV_PORTS` | `30000-30009` | Passive data port range (publish the same ports) |
+| `SEEDLY_FTP_ALLOW_PLAINTEXT` | `false` | Allow FTP without TLS (not recommended) |
+| `SEEDLY_FTP_TLS_CERT_FILE` / `SEEDLY_FTP_TLS_KEY_FILE` | *(empty)* | Existing certificate files (reloaded on change) |
+| `SEEDLY_FTP_TLS_ACME_DOMAIN` | *(empty)* | Obtain/renew a Let's Encrypt cert for this domain (DNS-01) |
+| `SEEDLY_FTP_TLS_ACME_DNS_PROVIDER` | *(empty)* | [lego DNS provider code](https://go-acme.github.io/lego/dns/) (e.g. `cloudflare`); its credentials are read from that provider's own env vars |
+| `SEEDLY_FTP_TLS_ACME_EMAIL` | *(empty)* | ACME account email |
+| `SEEDLY_FTP_TLS_ACME_CACHE_DIR` | `/data/certs` | Account key and certificate storage |
+| `SEEDLY_FTP_TLS_ACME_CA_URL` | Let's Encrypt prod | ACME directory (use staging while testing) |
+
+## FTP
+
+Explicit FTPS (`AUTH TLS`); plaintext logins are refused unless `SEEDLY_FTP_ALLOW_PLAINTEXT=true`.
+Log in with your Seedly username and password. Each user only sees their own torrents' files
+(the root lists the content of their torrents). Members are read-only; admins can also upload,
+rename, delete and create folders. The same tree is available in the web UI via **Files**.
