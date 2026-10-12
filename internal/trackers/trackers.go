@@ -63,24 +63,26 @@ func Match(pattern, host string) bool {
 	return re.MatchString(strings.ToLower(host))
 }
 
-// Policy is the active mode with the rule patterns of that mode.
+// Policy holds the authorize and deny patterns.
 type Policy struct {
-	Mode     db.TrackerMode
-	Patterns []string
+	Authorize []string
+	Deny      []string
 }
 
-func NewPolicy(mode db.TrackerMode, rules []db.TrackerRule) Policy {
-	p := Policy{Mode: mode}
+func NewPolicy(rules []db.TrackerRule) Policy {
+	var p Policy
 	for _, r := range rules {
-		if r.Mode == mode {
-			p.Patterns = append(p.Patterns, r.Pattern)
+		if r.Mode == db.TrackerModeAuthorize {
+			p.Authorize = append(p.Authorize, r.Pattern)
+		} else {
+			p.Deny = append(p.Deny, r.Pattern)
 		}
 	}
 	return p
 }
 
-func (p Policy) matches(host string) bool {
-	for _, pat := range p.Patterns {
+func matchAny(patterns []string, host string) bool {
+	for _, pat := range patterns {
 		if Match(pat, host) {
 			return true
 		}
@@ -88,13 +90,14 @@ func (p Policy) matches(host string) bool {
 	return false
 }
 
-// Blocked reports whether a tracker host is denied. An empty authorize list means
-// "not configured" and allows everything.
+// Blocked reports whether a tracker host is blocked: it matches a deny rule, or the
+// authorize list is non-empty and it matches none of its rules. An empty list is
+// "not configured" and has no effect.
 func (p Policy) Blocked(host string) bool {
-	if p.Mode == db.TrackerModeAuthorize {
-		return len(p.Patterns) > 0 && !p.matches(host)
+	if matchAny(p.Deny, host) {
+		return true
 	}
-	return p.matches(host)
+	return len(p.Authorize) > 0 && !matchAny(p.Authorize, host)
 }
 
 // Classify evaluates a torrent's tracker hosts. Torrents without trackers are OK.

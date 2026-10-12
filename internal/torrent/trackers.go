@@ -10,15 +10,11 @@ import (
 )
 
 func (e *Engine) policy(ctx context.Context) (trackers.Policy, error) {
-	mode, err := e.db.GetTrackerMode(ctx)
-	if err != nil {
-		return trackers.Policy{}, err
-	}
 	rules, err := e.db.ListTrackerRules(ctx)
 	if err != nil {
 		return trackers.Policy{}, err
 	}
-	return trackers.NewPolicy(mode, rules), nil
+	return trackers.NewPolicy(rules), nil
 }
 
 // filterTrackers drops blocked trackers, unless that would leave the torrent with none
@@ -88,7 +84,6 @@ type TrackerRow struct {
 }
 
 type TrackerOverview struct {
-	Mode      db.TrackerMode   `json:"mode"`
 	Authorize []db.TrackerRule `json:"authorize"`
 	Deny      []db.TrackerRule `json:"deny"`
 	Present   []TrackerRow     `json:"present"`
@@ -140,7 +135,6 @@ func (e *Engine) TrackerOverview(ctx context.Context) (*TrackerOverview, error) 
 	}
 
 	ov := &TrackerOverview{
-		Mode:      policy.Mode,
 		Authorize: []db.TrackerRule{},
 		Deny:      []db.TrackerRule{},
 		Present:   []TrackerRow{},

@@ -73,7 +73,6 @@ func (s *Server) Handler() http.Handler {
 			r.Patch("/users/{id}", s.handleUpdateUser)
 			r.Delete("/users/{id}", s.handleDeleteUser)
 			r.Get("/trackers", s.handleTrackers)
-			r.Put("/trackers/mode", s.handleSetTrackerMode)
 			r.Post("/trackers/rules", s.handleCreateTrackerRule)
 			r.Patch("/trackers/rules/{id}", s.handleUpdateTrackerRule)
 			r.Delete("/trackers/rules/{id}", s.handleDeleteTrackerRule)
@@ -526,24 +525,6 @@ func (s *Server) handleTrackers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, ov)
-}
-
-func (s *Server) handleSetTrackerMode(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
-	var body struct {
-		Mode db.TrackerMode `json:"mode"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Mode.Valid() {
-		writeError(w, http.StatusBadRequest, "mode must be authorize or deny")
-		return
-	}
-	if err := s.db.SetTrackerMode(r.Context(), body.Mode); err != nil {
-		writeError(w, http.StatusInternalServerError, "set mode failed")
-		return
-	}
-	s.handleTrackers(w, r)
 }
 
 func (s *Server) handleCreateTrackerRule(w http.ResponseWriter, r *http.Request) {

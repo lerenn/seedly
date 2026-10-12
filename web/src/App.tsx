@@ -969,28 +969,12 @@ function TrackersPanel({ onError, error }: { onError: (msg: string) => void; err
     )
   }
 
-  const setMode = (mode: TrackerMode) =>
-    run(() => api.setTrackerMode(mode), 'Switching mode failed')
-
   return (
     <>
       <header className="topbar">
         <div className="topbar-title">
           <h1>Trackers</h1>
           <span className="muted">{overview.present.length} in use</span>
-        </div>
-        <div className="mode-switch" role="group" aria-label="Tracker mode">
-          {(['authorize', 'deny'] as TrackerMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={overview.mode === m ? 'active' : 'ghost'}
-              disabled={busy}
-              onClick={() => void setMode(m)}
-            >
-              {m === 'authorize' ? 'Authorize' : 'Deny'}
-            </button>
-          ))}
         </div>
       </header>
 
@@ -1001,7 +985,6 @@ function TrackersPanel({ onError, error }: { onError: (msg: string) => void; err
           <RuleList
             title="Authorized trackers"
             mode="authorize"
-            active={overview.mode === 'authorize'}
             rules={overview.authorize}
             empty="No rule configured: all trackers are allowed."
             busy={busy}
@@ -1010,7 +993,6 @@ function TrackersPanel({ onError, error }: { onError: (msg: string) => void; err
           <RuleList
             title="Denied trackers"
             mode="deny"
-            active={overview.mode === 'deny'}
             rules={overview.deny}
             empty="No rule configured: no tracker is denied."
             busy={busy}
@@ -1073,7 +1055,6 @@ function TrackersPanel({ onError, error }: { onError: (msg: string) => void; err
 function RuleList({
   title,
   mode,
-  active,
   rules,
   empty,
   busy,
@@ -1081,7 +1062,6 @@ function RuleList({
 }: {
   title: string
   mode: TrackerMode
-  active: boolean
   rules: TrackerRule[]
   empty: string
   busy: boolean
@@ -1092,11 +1072,8 @@ function RuleList({
   const [editPattern, setEditPattern] = useState('')
 
   return (
-    <section className={active ? 'users-card' : 'users-card rules-inactive'}>
-      <h2>
-        {title}
-        {active ? null : <span className="muted"> · inactive</span>}
-      </h2>
+    <section className="users-card">
+      <h2>{title}</h2>
       <form
         className="users-form rule-form"
         onSubmit={(e) => {
