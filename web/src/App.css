@@ -707,3 +707,57 @@ button.danger {
   line-height: 1;
   cursor: pointer;
 }
+
+.mode-switch {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.mode-switch button.active {
+  background: var(--accent, #3b82f6);
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 800px) {
+  .rules-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rules-inactive {
+  opacity: 0.6;
+}
+
+.rule-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rule-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rule-list li > .mono,
+.rule-list li > input {
+  flex: 1;
+}
+
+.tracker-flag.warn {
+  color: #e0a93b;
+  cursor: help;
+}
+
+.users-form.rule-form {
+  grid-template-columns: 1fr auto;
+}

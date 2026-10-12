@@ -42,6 +42,9 @@ func main() {
 		log.Fatalf("torrent engine: %v", err)
 	}
 	defer engine.Close()
+	if err := engine.IndexTrackers(ctx); err != nil {
+		log.Fatalf("index trackers: %v", err)
+	}
 	if err := engine.Reload(ctx); err != nil {
 		log.Fatalf("reload torrents: %v", err)
 	}

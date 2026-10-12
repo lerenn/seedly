@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/storage"
 	"github.com/lerenn/seedly/internal/db"
+	"github.com/lerenn/seedly/internal/trackers"
 )
 
 type Engine struct {
@@ -109,6 +111,15 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 	}
 	infoHash := mi.HashInfoBytes().HexString()
 
+	trackerURLs := mi.UpvertedAnnounceList().DistinctValues()
+	policy, err := e.policy(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if hosts := trackers.Hosts(trackerURLs); len(hosts) > 0 && policy.Classify(hosts) == trackers.StateDenied {
+		return nil, fmt.Errorf("%q uses only unauthorized trackers: %s", info.Name, strings.Join(hosts, ", "))
+	}
+
 	// Meta and data paths are keyed by owner + info hash, so a re-add would write
 	// over an existing torrent's files. Reject it up front instead.
 	exists, err := e.db.TorrentExists(ctx, ownerID, infoHash)
@@ -144,6 +155,11 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 		return nil, err
 	}
 
+	if err := e.db.SetTorrentTrackers(ctx, rec.ID, trackerURLs); err != nil {
+		_ = e.Delete(ctx, rec.ID, true)
+		return nil, err
+	}
+
 	tt, err := e.addFromMetaFile(metaFile, dataDir)
 	if err != nil {
 		_ = e.db.UpdateTorrentStatus(ctx, rec.ID, db.StatusError, err.Error(), nil)
@@ -165,6 +181,10 @@ func (e *Engine) addFromMetaFile(metaPath, dataDir string) (*torrent.Torrent, er
 		return nil, err
 	}
 	spec := torrent.TorrentSpecFromMetaInfo(mi)
+	// Don't announce to blocked trackers on torrents that still have an allowed one.
+	if policy, err := e.policy(context.Background()); err == nil {
+		spec.Trackers = filterTrackers(spec.Trackers, policy)
+	}
 	spec.Storage = storage.NewFile(dataDir)
 	tt, _, err := e.client.AddTorrentSpec(spec)
 	if err != nil {

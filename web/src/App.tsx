@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TorrentView, type UploadFailure, type User } from './api'
+import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TrackerMode, type TrackerOverview, type TrackerRow, type TrackerRule, type TorrentView, type UploadFailure, type User } from './api'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
-type Panel = 'torrents' | 'users'
+type Panel = 'torrents' | 'users' | 'trackers'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -281,6 +281,15 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
             >
               <span>Users</span>
               <span className="count">{users.length}</span>
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
+              type="button"
+              className={panel === 'trackers' ? 'nav-item active' : 'nav-item'}
+              onClick={() => setPanel('trackers')}
+            >
+              <span>Trackers</span>
             </button>
           ) : null}
         </nav>
@@ -600,6 +609,8 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
               ) : null}
             </div>
           </>
+        ) : panel === 'trackers' ? (
+          <TrackersPanel onError={setError} error={error} />
         ) : (
           <UsersPanel
             currentUser={user}
@@ -870,5 +881,270 @@ function UsersPanel({
         </section>
       </div>
     </>
+  )
+}
+
+function TrackersPanel({ onError, error }: { onError: (msg: string) => void; error: string }) {
+  const [overview, setOverview] = useState<TrackerOverview | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function refresh() {
+    try {
+      setOverview(await api.trackers())
+      onError('')
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Failed to load trackers')
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+    const t = setInterval(() => void refresh(), 5000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function run(fn: () => Promise<unknown>, failure: string) {
+    setBusy(true)
+    try {
+      await fn()
+      await refresh()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : failure)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function purge(row: TrackerRow) {
+    const list = row.danger_torrents.map((t) => `• ${t.name} (${t.owner})`).join('\n')
+    if (
+      !confirm(
+        `Remove ${row.danger_torrents.length} torrent(s) and their data? Tracker ${row.host} is not authorized and they have no other allowed tracker.\n\n${list}`,
+      )
+    ) {
+      return
+    }
+    await run(() => api.purgeTracker(row.host), 'Remove failed')
+  }
+
+  if (!overview) {
+    return (
+      <>
+        <header className="topbar">
+          <div className="topbar-title">
+            <h1>Trackers</h1>
+          </div>
+        </header>
+        {error ? <p className="error banner">{error}</p> : null}
+      </>
+    )
+  }
+
+  const setMode = (mode: TrackerMode) =>
+    run(() => api.setTrackerMode(mode), 'Switching mode failed')
+
+  return (
+    <>
+      <header className="topbar">
+        <div className="topbar-title">
+          <h1>Trackers</h1>
+          <span className="muted">{overview.present.length} in use</span>
+        </div>
+        <div className="mode-switch" role="group" aria-label="Tracker mode">
+          {(['authorize', 'deny'] as TrackerMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={overview.mode === m ? 'active' : 'ghost'}
+              disabled={busy}
+              onClick={() => void setMode(m)}
+            >
+              {m === 'authorize' ? 'Authorize' : 'Deny'}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {error ? <p className="error banner">{error}</p> : null}
+
+      <div className="users-panel">
+        <div className="rules-grid">
+          <RuleList
+            title="Authorized trackers"
+            mode="authorize"
+            active={overview.mode === 'authorize'}
+            rules={overview.authorize}
+            empty="No rule configured: all trackers are allowed."
+            busy={busy}
+            run={run}
+          />
+          <RuleList
+            title="Denied trackers"
+            mode="deny"
+            active={overview.mode === 'deny'}
+            rules={overview.deny}
+            empty="No rule configured: no tracker is denied."
+            busy={busy}
+            run={run}
+          />
+        </div>
+
+        <section className="users-card users-table-card">
+          <h2>Trackers in use</h2>
+          <div className="torrent-list">
+            {overview.present.length === 0 ? (
+              <div className="empty">No torrent uses a tracker.</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tracker</th>
+                    <th className="col-num">Torrents</th>
+                    <th className="col-num">Users</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overview.present.map((row) => (
+                    <tr key={row.host}>
+                      <td className="mono">{row.host}</td>
+                      <td className="col-num">{row.torrent_count}</td>
+                      <td className="col-num">{row.user_count}</td>
+                      <td>
+                        {row.danger_count > 0 ? (
+                          <button
+                            type="button"
+                            className="danger tracker-flag"
+                            title={`Not authorized: click to remove ${row.danger_count} torrent(s) and data`}
+                            disabled={busy}
+                            onClick={() => void purge(row)}
+                          >
+                            ⛔ Danger
+                          </button>
+                        ) : row.blocked ? (
+                          <span className="tracker-flag warn" title="Some of the trackers are not authorized">
+                            ⚠ Warning
+                          </span>
+                        ) : (
+                          <span className="muted">OK</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  )
+}
+
+function RuleList({
+  title,
+  mode,
+  active,
+  rules,
+  empty,
+  busy,
+  run,
+}: {
+  title: string
+  mode: TrackerMode
+  active: boolean
+  rules: TrackerRule[]
+  empty: string
+  busy: boolean
+  run: (fn: () => Promise<unknown>, failure: string) => Promise<void>
+}) {
+  const [pattern, setPattern] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editPattern, setEditPattern] = useState('')
+
+  return (
+    <section className={active ? 'users-card' : 'users-card rules-inactive'}>
+      <h2>
+        {title}
+        {active ? null : <span className="muted"> · inactive</span>}
+      </h2>
+      <form
+        className="users-form rule-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const value = pattern.trim()
+          if (!value) return
+          void run(() => api.addTrackerRule(mode, value), 'Add failed').then(() => setPattern(''))
+        }}
+      >
+        <input
+          placeholder="host, e.g. *.example.org"
+          value={pattern}
+          onChange={(e) => setPattern(e.target.value)}
+        />
+        <button type="submit" disabled={busy || !pattern.trim()}>
+          Add
+        </button>
+      </form>
+      {rules.length === 0 ? (
+        <p className="muted users-hint">{empty}</p>
+      ) : (
+        <ul className="rule-list">
+          {rules.map((r) => (
+            <li key={r.id}>
+              {editingId === r.id ? (
+                <>
+                  <input
+                    value={editPattern}
+                    onChange={(e) => setEditPattern(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setEditingId(null)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !editPattern.trim()}
+                    onClick={() =>
+                      void run(() => api.updateTrackerRule(r.id, editPattern.trim()), 'Update failed').then(
+                        () => setEditingId(null),
+                      )
+                    }
+                  >
+                    Save
+                  </button>
+                  <button type="button" className="ghost" onClick={() => setEditingId(null)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="mono">{r.pattern}</span>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setEditingId(r.id)
+                      setEditPattern(r.pattern)
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={busy}
+                    onClick={() => void run(() => api.deleteTrackerRule(r.id), 'Delete failed')}
+                  >
+                    Remove
+                  </button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
