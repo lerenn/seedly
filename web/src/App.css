@@ -861,5 +861,7 @@ button.danger {
 
 .fm-check {
   flex: none;
+  width: auto;
   margin: 0;
+  padding: 0;
 }
