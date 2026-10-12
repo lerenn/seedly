@@ -21,6 +21,7 @@ import (
 	"github.com/lerenn/seedly/internal/disk"
 	"github.com/lerenn/seedly/internal/download"
 	"github.com/lerenn/seedly/internal/torrent"
+	"github.com/lerenn/seedly/internal/trackers"
 )
 
 type Server struct {
@@ -58,6 +59,12 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/users", s.handleCreateUser)
 			r.Patch("/users/{id}", s.handleUpdateUser)
 			r.Delete("/users/{id}", s.handleDeleteUser)
+			r.Get("/trackers", s.handleTrackers)
+			r.Put("/trackers/mode", s.handleSetTrackerMode)
+			r.Post("/trackers/rules", s.handleCreateTrackerRule)
+			r.Patch("/trackers/rules/{id}", s.handleUpdateTrackerRule)
+			r.Delete("/trackers/rules/{id}", s.handleDeleteTrackerRule)
+			r.Post("/trackers/purge", s.handlePurgeTracker)
 			r.Get("/torrents", s.handleListTorrents)
 			r.Post("/torrents", s.handleUploadTorrent)
 			r.Get("/torrents/{id}", s.handleGetTorrent)
@@ -472,4 +479,143 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+	if currentUser(r).Role != db.RoleAdmin {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return false
+	}
+	return true
+}
+
+func (s *Server) handleTrackers(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	ov, err := s.engine.TrackerOverview(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list trackers failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, ov)
+}
+
+func (s *Server) handleSetTrackerMode(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	var body struct {
+		Mode db.TrackerMode `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Mode.Valid() {
+		writeError(w, http.StatusBadRequest, "mode must be authorize or deny")
+		return
+	}
+	if err := s.db.SetTrackerMode(r.Context(), body.Mode); err != nil {
+		writeError(w, http.StatusInternalServerError, "set mode failed")
+		return
+	}
+	s.handleTrackers(w, r)
+}
+
+func (s *Server) handleCreateTrackerRule(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	var body struct {
+		Mode    db.TrackerMode `json:"mode"`
+		Pattern string         `json:"pattern"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Mode.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	pattern, err := trackers.NormalizePattern(body.Pattern)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rule, err := s.db.CreateTrackerRule(r.Context(), body.Mode, pattern)
+	if err != nil {
+		writeError(w, http.StatusConflict, "rule already exists")
+		return
+	}
+	writeJSON(w, http.StatusCreated, rule)
+}
+
+func (s *Server) handleUpdateTrackerRule(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		Pattern string `json:"pattern"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	pattern, err := trackers.NormalizePattern(body.Pattern)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.db.UpdateTrackerRule(r.Context(), id, pattern); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "rule not found")
+			return
+		}
+		writeError(w, http.StatusConflict, "rule already exists")
+		return
+	}
+	rule, err := s.db.GetTrackerRule(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get rule failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, rule)
+}
+
+func (s *Server) handleDeleteTrackerRule(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := s.db.DeleteTrackerRule(r.Context(), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "rule not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "delete rule failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handlePurgeTracker(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	var body struct {
+		Host string `json:"host"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Host == "" {
+		writeError(w, http.StatusBadRequest, "host required")
+		return
+	}
+	n, err := s.engine.PurgeTracker(r.Context(), strings.ToLower(body.Host))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"removed": n})
 }

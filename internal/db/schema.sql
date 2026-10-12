@@ -34,3 +34,22 @@ CREATE TABLE IF NOT EXISTS torrents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_torrents_owner ON torrents(owner_id);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tracker_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mode TEXT NOT NULL CHECK (mode IN ('authorize', 'deny')),
+    pattern TEXT NOT NULL COLLATE NOCASE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (mode, pattern)
+);
+
+CREATE TABLE IF NOT EXISTS torrent_trackers (
+    torrent_id INTEGER NOT NULL REFERENCES torrents(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    PRIMARY KEY (torrent_id, url)
+);

@@ -54,6 +54,34 @@ export type DiskUsage = {
   other_bytes: number
 }
 
+export type TrackerMode = 'authorize' | 'deny'
+
+export type TrackerRule = {
+  id: number
+  mode: TrackerMode
+  pattern: string
+  created_at: string
+}
+
+export type TrackerTorrent = { id: number; name: string; owner: string }
+
+export type TrackerRow = {
+  host: string
+  torrent_count: number
+  user_count: number
+  blocked: boolean
+  danger_count: number
+  warning_count: number
+  danger_torrents: TrackerTorrent[]
+}
+
+export type TrackerOverview = {
+  mode: TrackerMode
+  authorize: TrackerRule[]
+  deny: TrackerRule[]
+  present: TrackerRow[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',
@@ -125,6 +153,29 @@ export const api = {
   resume: (id: number) => request<TorrentView>(`/api/torrents/${id}/resume`, { method: 'POST' }),
   remove: (id: number) => request<{ status: string }>(`/api/torrents/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: number) => `/api/torrents/${id}/download`,
+  trackers: () => request<TrackerOverview>('/api/trackers'),
+  setTrackerMode: (mode: TrackerMode) =>
+    request<TrackerOverview>('/api/trackers/mode', {
+      method: 'PUT',
+      body: JSON.stringify({ mode }),
+    }),
+  addTrackerRule: (mode: TrackerMode, pattern: string) =>
+    request<TrackerRule>('/api/trackers/rules', {
+      method: 'POST',
+      body: JSON.stringify({ mode, pattern }),
+    }),
+  updateTrackerRule: (id: number, pattern: string) =>
+    request<TrackerRule>(`/api/trackers/rules/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pattern }),
+    }),
+  deleteTrackerRule: (id: number) =>
+    request<{ status: string }>(`/api/trackers/rules/${id}`, { method: 'DELETE' }),
+  purgeTracker: (host: string) =>
+    request<{ removed: number }>('/api/trackers/purge', {
+      method: 'POST',
+      body: JSON.stringify({ host }),
+    }),
   disk: () => request<DiskUsage>('/api/disk'),
 }
 
