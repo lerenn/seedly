@@ -15,6 +15,7 @@ import (
 	"github.com/lerenn/seedly/internal/auth"
 	"github.com/lerenn/seedly/internal/db"
 	"github.com/lerenn/seedly/internal/files"
+	"github.com/lerenn/seedly/internal/throttle"
 )
 
 // Authenticator validates FTP credentials.
@@ -33,6 +34,8 @@ type Options struct {
 	TLS func() (*tls.Config, error)
 	// AllowPlaintext lets clients authenticate without TLS.
 	AllowPlaintext bool
+	// Limiter throttles repeated failed logins per client IP (optional).
+	Limiter *throttle.Limiter
 }
 
 // Server is a running FTP server.
@@ -109,14 +112,20 @@ func (d *driver) ClientConnected(ftpserver.ClientContext) (string, error) {
 
 func (d *driver) ClientDisconnected(ftpserver.ClientContext) {}
 
-func (d *driver) AuthUser(_ ftpserver.ClientContext, user, pass string) (ftpserver.ClientDriver, error) {
+func (d *driver) AuthUser(cc ftpserver.ClientContext, user, pass string) (ftpserver.ClientDriver, error) {
+	key := throttle.Key(cc.RemoteAddr().String())
+	if blocked, _ := d.opts.Limiter.Blocked(key); blocked {
+		return nil, errors.New("too many failed attempts, try again later")
+	}
 	u, err := d.auth.Authenticate(context.Background(), user, pass)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			d.opts.Limiter.Fail(key)
 			return nil, errors.New("invalid credentials")
 		}
 		return nil, err
 	}
+	d.opts.Limiter.Succeed(key)
 	// Everyone only sees their own files; only admins may modify them.
 	tree := files.NewTree(d.lister, u.ID, u.Role != db.RoleAdmin)
 	return &treeFS{tree: tree}, nil

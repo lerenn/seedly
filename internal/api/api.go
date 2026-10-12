@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/lerenn/seedly/internal/db"
 	"github.com/lerenn/seedly/internal/disk"
 	"github.com/lerenn/seedly/internal/download"
+	"github.com/lerenn/seedly/internal/throttle"
 	"github.com/lerenn/seedly/internal/torrent"
 	"github.com/lerenn/seedly/internal/trackers"
 )
@@ -30,15 +32,26 @@ type Server struct {
 	db     *db.DB
 	engine *torrent.Engine
 	web    http.Handler
+	limit  *throttle.Limiter
 }
 
 func New(cfg config.Config, authSvc *auth.Service, database *db.DB, engine *torrent.Engine, web http.Handler) *Server {
-	return &Server{cfg: cfg, auth: authSvc, db: database, engine: engine, web: web}
+	return &Server{
+		cfg: cfg, auth: authSvc, db: database, engine: engine, web: web,
+		limit: throttle.New(cfg.LoginMaxFailures, cfg.LoginBan, cfg.LoginBan),
+	}
+}
+
+// WithLimiter shares a failed-login limiter (e.g. with the FTP server).
+func (s *Server) WithLimiter(l *throttle.Limiter) *Server {
+	s.limit = l
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(capturePeer) // before RealIP, which rewrites RemoteAddr from spoofable headers
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -122,15 +135,23 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
+	key := clientKey(r)
+	if blocked, wait := s.limit.Blocked(key); blocked {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		writeError(w, http.StatusTooManyRequests, "too many failed attempts, try again later")
+		return
+	}
 	token, user, err := s.auth.Login(r.Context(), body.Username, body.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			s.limit.Fail(key)
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
+	s.limit.Succeed(key)
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.CookieName,
 		Value:    token,
@@ -624,4 +645,28 @@ func (s *Server) handlePurgeTracker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"removed": n})
+}
+
+type peerKey struct{}
+
+// capturePeer remembers the real TCP peer before RealIP overwrites RemoteAddr.
+func capturePeer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), peerKey{}, r.RemoteAddr)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// clientKey identifies the client for throttling. X-Real-IP is only trusted
+// when the TCP peer is loopback (the nginx reverse proxy sets it); other
+// forwarding headers can be spoofed by clients and are ignored.
+func clientKey(r *http.Request) string {
+	peer, _ := r.Context().Value(peerKey{}).(string)
+	ip := throttle.Key(peer)
+	if p := net.ParseIP(ip); p != nil && p.IsLoopback() {
+		if real := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); real != nil {
+			return real.String()
+		}
+	}
+	return ip
 }
