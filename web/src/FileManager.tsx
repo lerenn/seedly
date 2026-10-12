@@ -10,12 +10,27 @@ function parent(dir: string): string {
   return i <= 0 ? '/' : dir.slice(0, i)
 }
 
-export function FileManager({ torrentId }: { torrentId: number }) {
+async function collectFiles(torrentId: number, dir: string): Promise<string[]> {
+  const res = await api.listFiles(torrentId, dir)
+  const out: string[] = []
+  for (const e of res.entries) {
+    const full = join(dir, e.name)
+    if (e.is_dir) out.push(...(await collectFiles(torrentId, full)))
+    else out.push(full)
+  }
+  return out
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?: string }) {
   const [dir, setDir] = useState('/')
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [writable, setWritable] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [selected, setSelected] = useState<Map<string, boolean>>(new Map()) // path -> is_dir
 
   const load = useCallback(
     async (path: string) => {
@@ -48,11 +63,63 @@ export function FileManager({ torrentId }: { torrentId: number }) {
     }
   }
 
+  function toggle(path: string, isDir: boolean) {
+    setSelected((cur) => {
+      const next = new Map(cur)
+      if (next.has(path)) next.delete(path)
+      else next.set(path, isDir)
+      return next
+    })
+  }
+
+  // Starts one browser download per selected file (folders are expanded);
+  // browsers may ask to allow multiple downloads.
+  async function downloadSelected() {
+    setBusy(true)
+    try {
+      const paths: string[] = []
+      for (const [sel, isDir] of selected) {
+        if (isDir) paths.push(...(await collectFiles(torrentId, sel)))
+        else paths.push(sel)
+      }
+      for (let i = 0; i < paths.length; i++) {
+        setProgress(`Downloading ${i + 1}/${paths.length}…`)
+        const a = document.createElement('a')
+        a.href = api.fileDownloadUrl(torrentId, paths[i])
+        a.download = ''
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        await sleep(400)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setProgress('')
+      setBusy(false)
+    }
+  }
+
   const crumbs = dir === '/' ? [] : dir.slice(1).split('/')
 
   return (
     <section className="file-manager">
       <h3>Files</h3>
+
+      {zipUrl ? (
+        <div className="fm-downloads">
+          <a className="button" href={zipUrl}>
+            Download All (ZIP)
+          </a>
+          <button
+            type="button"
+            disabled={busy || selected.size === 0}
+            onClick={() => void downloadSelected()}
+          >
+            {progress || `Download Selected${selected.size ? ` (${selected.size})` : ''}`}
+          </button>
+        </div>
+      ) : null}
 
       {dir !== '/' ? (
         <nav className="fm-crumbs" aria-label="Path">
@@ -84,6 +151,13 @@ export function FileManager({ torrentId }: { torrentId: number }) {
           const full = join(dir, e.name)
           return (
             <li key={e.name}>
+              <input
+                type="checkbox"
+                className="fm-check"
+                aria-label={`Select ${e.name}`}
+                checked={selected.has(full)}
+                onChange={() => toggle(full, e.is_dir)}
+              />
               {e.is_dir ? (
                 <button type="button" className="fm-name" onClick={() => void load(full)}>
                   📁 {e.name}
