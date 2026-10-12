@@ -584,13 +584,6 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                         Pause
                       </button>
                     )}
-                    {(selected.stats.complete ||
-                      selected.status === 'seeding' ||
-                      selected.completed_at) && (
-                      <a className="button" href={api.downloadUrl(selected.id)}>
-                        Download
-                      </a>
-                    )}
                     <button
                       type="button"
                       className="danger"
@@ -607,6 +600,15 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                     </button>
                   </div>
                   <FileManager key={selected.id} torrentId={selected.id} />
+                  {(selected.stats.complete ||
+                    selected.status === 'seeding' ||
+                    selected.completed_at) && (
+                    <div className="detail-actions">
+                      <a className="button" href={api.downloadUrl(selected.id)}>
+                        Download All (ZIP)
+                      </a>
+                    </div>
+                  )}
                 </aside>
               ) : null}
             </div>
