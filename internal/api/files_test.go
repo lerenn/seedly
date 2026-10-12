@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -64,7 +65,7 @@ func newFilesEnv(t *testing.T) *filesEnv {
 			t.Fatal(err)
 		}
 	}
-	cfg := config.Config{CookieName: "s", SessionTTL: time.Hour}
+	cfg := config.Config{CookieName: "s", SessionTTL: time.Hour, LoginMaxFailures: 5, LoginBan: time.Minute}
 	ts := httptest.NewServer(New(cfg, svc, database, nil, nil).Handler())
 	t.Cleanup(ts.Close)
 	e := &filesEnv{srv: ts, data: data, adminID: admin.ID, memberID: member.ID, cookies: map[string]*http.Cookie{}}
@@ -178,5 +179,35 @@ func TestFilesAdminWriteFlow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(e.data, "x_aaaa", "Show", "d")); !os.IsNotExist(err) {
 		t.Errorf("dir still exists: %v", err)
+	}
+}
+
+func TestLoginThrottled(t *testing.T) {
+	e := newFilesEnv(t)
+	login := func(pw, realIP string) int {
+		body, _ := json.Marshal(map[string]string{"username": "admin", "password": pw})
+		req, _ := http.NewRequest("POST", e.srv.URL+"/api/auth/login", bytes.NewReader(body))
+		if realIP != "" {
+			req.Header.Set("X-Real-IP", realIP)
+		}
+		// A spoofable header must not let a client dodge the limiter.
+		req.Header.Set("True-Client-IP", fmt.Sprintf("9.9.9.%d", time.Now().UnixNano()%250))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for i := 0; i < 5; i++ {
+		if c := login("wrong", "1.1.1.1"); c != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: %d", i, c)
+		}
+	}
+	if c := login("adminpw", "1.1.1.1"); c != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 even with right password, got %d", c)
+	}
+	if c := login("adminpw", "2.2.2.2"); c != http.StatusOK {
+		t.Fatalf("other client blocked: %d", c)
 	}
 }

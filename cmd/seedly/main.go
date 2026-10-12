@@ -17,6 +17,7 @@ import (
 	"github.com/lerenn/seedly/internal/config"
 	"github.com/lerenn/seedly/internal/db"
 	"github.com/lerenn/seedly/internal/ftp"
+	"github.com/lerenn/seedly/internal/throttle"
 	"github.com/lerenn/seedly/internal/tlscert"
 	"github.com/lerenn/seedly/internal/torrent"
 )
@@ -51,8 +52,9 @@ func main() {
 		log.Fatalf("reload torrents: %v", err)
 	}
 
+	limiter := throttle.New(cfg.LoginMaxFailures, cfg.LoginBan, cfg.LoginBan)
 	if cfg.FTPEnabled {
-		ftpSrv, err := startFTP(ctx, cfg, authSvc, database)
+		ftpSrv, err := startFTP(ctx, cfg, authSvc, database, limiter)
 		if err != nil {
 			log.Fatalf("ftp: %v", err)
 		}
@@ -61,7 +63,7 @@ func main() {
 	}
 
 	webHandler := spaHandler(cfg.WebPath)
-	srv := api.New(cfg, authSvc, database, engine, webHandler)
+	srv := api.New(cfg, authSvc, database, engine, webHandler).WithLimiter(limiter)
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
@@ -85,11 +87,12 @@ func main() {
 	_ = httpServer.Shutdown(shutdownCtx)
 }
 
-func startFTP(ctx context.Context, cfg config.Config, authSvc *auth.Service, database *db.DB) (*ftp.Server, error) {
+func startFTP(ctx context.Context, cfg config.Config, authSvc *auth.Service, database *db.DB, limiter *throttle.Limiter) (*ftp.Server, error) {
 	opts := ftp.Options{
 		ListenAddr:     cfg.FTPListen,
 		PublicHost:     cfg.FTPPublicHost,
 		AllowPlaintext: cfg.FTPAllowPlaintext,
+		Limiter:        limiter,
 	}
 	start, end, err := ftp.ParsePortRange(cfg.FTPPassivePorts)
 	if err != nil {

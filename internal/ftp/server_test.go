@@ -19,6 +19,7 @@ import (
 
 	"github.com/lerenn/seedly/internal/auth"
 	"github.com/lerenn/seedly/internal/db"
+	"github.com/lerenn/seedly/internal/throttle"
 
 	jftp "github.com/jlaffaye/ftp"
 )
@@ -273,5 +274,28 @@ func TestDataConnectionResumesTLSSession(t *testing.T) {
 	}
 	if handshakes < 2 || resumed < 1 {
 		t.Fatalf("data connection did not resume the session (handshakes=%d resumed=%d)", handshakes, resumed)
+	}
+}
+
+func TestFailedLoginsAreThrottled(t *testing.T) {
+	o := tlsOpts(t)
+	o.Limiter = throttle.New(3, time.Minute, time.Minute)
+	e := setup(t, o)
+	try := func(pw string) error {
+		c, err := jftp.Dial(e.addr, jftp.DialWithTimeout(5*time.Second),
+			jftp.DialWithExplicitTLS(&tls.Config{InsecureSkipVerify: true}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Quit()
+		return c.Login("member", pw)
+	}
+	for i := 0; i < 3; i++ {
+		if err := try("bad"); err == nil {
+			t.Fatal("bad password accepted")
+		}
+	}
+	if err := try("pw-member"); err == nil {
+		t.Fatal("login allowed while banned")
 	}
 }
