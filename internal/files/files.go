@@ -35,6 +35,28 @@ type Tree struct {
 	lister   TorrentLister
 	ownerID  int64
 	readOnly bool
+	// fixed, when set, makes the tree a plain view of one real directory
+	// (a single torrent's content) instead of the owner's torrent listing.
+	fixed string
+}
+
+// NewTorrentTree returns a tree rooted at one torrent's data directory. When
+// the directory holds a single folder (the usual multi-file layout), the tree
+// is rooted inside that folder.
+func NewTorrentTree(dataPath string, readOnly bool) *Tree {
+	root := dataPath
+	if items, err := os.ReadDir(dataPath); err == nil {
+		var visible []os.DirEntry
+		for _, it := range items {
+			if !strings.HasPrefix(it.Name(), ".torrent") {
+				visible = append(visible, it)
+			}
+		}
+		if len(visible) == 1 && visible[0].IsDir() {
+			root = filepath.Join(dataPath, visible[0].Name())
+		}
+	}
+	return &Tree{fixed: root, readOnly: readOnly}
 }
 
 // NewTree returns the tree of ownerID. A read-only tree rejects every mutation.
@@ -103,14 +125,19 @@ func (t *Tree) roots(ctx context.Context) ([]topEntry, error) {
 
 // resolved is the result of resolving a virtual path.
 type resolved struct {
-	root bool   // the virtual root itself
-	top  bool   // a direct child of the root
-	real string // real path (empty for the root)
-	base string // torrent data dir containing real
+	root      bool   // the virtual root itself (owner listing mode)
+	fixedRoot bool   // the root directory of a fixed tree
+	top       bool   // a direct child of the root
+	real      string // real path (empty for the root)
+	base      string // torrent data dir containing real
 }
 
 func (t *Tree) resolve(ctx context.Context, name string) (resolved, error) {
 	p := Clean(name)
+	if t.fixed != "" {
+		real := filepath.Join(t.fixed, filepath.FromSlash(p))
+		return resolved{real: real, base: t.fixed, top: p != "/" && path.Dir(p) == "/", fixedRoot: p == "/"}, nil
+	}
 	if p == "/" {
 		return resolved{root: true}, nil
 	}
@@ -179,6 +206,9 @@ func (t *Tree) List(ctx context.Context, name string) ([]Entry, error) {
 			return nil, err
 		}
 		for _, it := range items {
+			if t.fixed != "" && strings.HasPrefix(it.Name(), ".torrent") {
+				continue
+			}
 			info, err := it.Info()
 			if err != nil {
 				continue
@@ -225,7 +255,7 @@ func (t *Tree) OpenFile(ctx context.Context, name string, flag int, perm os.File
 			return nil, ErrReadOnly
 		}
 		// New top-level files would not belong to any torrent.
-		if err != nil || r.root {
+		if err != nil || r.root || r.fixedRoot {
 			return nil, ErrReadOnly
 		}
 	}
@@ -253,7 +283,7 @@ func (t *Tree) writable(ctx context.Context, name string) (resolved, error) {
 	if err != nil {
 		return resolved{}, err
 	}
-	if r.root {
+	if r.root || r.fixedRoot {
 		return resolved{}, ErrReadOnly
 	}
 	return r, nil
@@ -266,7 +296,7 @@ func (t *Tree) Mkdir(ctx context.Context, name string) error {
 	}
 	// The parent must exist and not be the root.
 	parent := path.Dir(Clean(name))
-	if parent == "/" {
+	if parent == "/" && t.fixed == "" {
 		return ErrReadOnly
 	}
 	r, err := t.writable(ctx, name)
@@ -300,7 +330,13 @@ func (t *Tree) Rename(ctx context.Context, from, to string) error {
 		return ErrReadOnly
 	}
 	var dst string
-	if path.Dir(to) == "/" {
+	if t.fixed != "" {
+		d, err := t.writable(ctx, to)
+		if err != nil {
+			return err
+		}
+		dst = d.real
+	} else if path.Dir(to) == "/" {
 		// Renaming at the root: only valid for a top-level source.
 		if !src.top {
 			return ErrReadOnly

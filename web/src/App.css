@@ -401,7 +401,7 @@ h2 {
 .content {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr 360px;
   min-height: 0;
 }
 
@@ -751,20 +751,6 @@ button.danger {
   grid-template-columns: 1fr auto;
 }
 
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.files-toggle.active {
-  border-color: var(--accent);
-}
-
-.content.files-open {
-  grid-template-columns: 1fr 420px;
-}
-
 .fm-crumbs {
   display: flex;
   flex-wrap: wrap;
@@ -846,4 +832,18 @@ button.danger {
 
 .fm-note {
   margin: 0 0 0.75rem;
+}
+
+.file-manager {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.file-manager h3 {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0 0 0.6rem;
 }

@@ -54,7 +54,7 @@ Open http://localhost:8080 and sign in with:
 
 - Local username/password sessions; first admin bootstrapped from env when the DB is empty
 - Users see only their torrents; admins can switch **View as** another user
-- Access your torrent files over FTPS and from the **Files** side panel in the UI (read-only for members, read-write for admins)
+- Access your torrent files over FTPS and from the file list in a torrent's detail panel (read-only for members, read-write for admins)
 - Add torrents via `.torrent` upload, one or several files at a time (per-file errors are reported without blocking the rest)
 - Progress / status / peers / downloaded / uploaded with pause, resume, delete
 - Completed torrents keep seeding until paused or deleted
@@ -129,7 +129,7 @@ Then upload `.testdata/hello.torrent` in the UI while the webseed server is runn
 Explicit FTPS (`AUTH TLS`) on `SEEDLY_FTP_LISTEN`; plaintext logins are refused unless
 `SEEDLY_FTP_ALLOW_PLAINTEXT=true`. Log in with your Seedly username and password.
 
-- **Scope:** each user only sees their own torrents' files (the root lists the content of their torrents). Members are read-only; admins can also upload, rename, delete and create folders. The same tree is available in the web UI via **Files**, and admins following "View as" see that user's files.
+- **Scope:** each user only sees their own torrents' files (the root lists the content of their torrents). Members are read-only; admins can also upload, rename, delete and create folders. The torrent's files are also listed in its detail panel in the web UI (any user's torrent for admins, via "View as").
 - **Brute force:** failed logins (web and FTP) are throttled per IP — see `SEEDLY_LOGIN_MAX_FAILURES` / `SEEDLY_LOGIN_BAN`.
 - **Ports:** publish the control port (e.g. `21:2121`) and the whole `SEEDLY_FTP_PASV_PORTS` range, and open them in your firewall. Set `SEEDLY_FTP_PUBLIC_HOST` to the public hostname.
 - **TLS** — pick one:

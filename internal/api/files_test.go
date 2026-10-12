@@ -25,7 +25,9 @@ type filesEnv struct {
 	data     string
 	adminID  int64
 	memberID int64
-	cookies  map[string]*http.Cookie
+
+	adminTorrent, memberTorrent int64
+	cookies                     map[string]*http.Cookie
 }
 
 func newFilesEnv(t *testing.T) *filesEnv {
@@ -47,6 +49,7 @@ func newFilesEnv(t *testing.T) *filesEnv {
 		t.Fatal(err)
 	}
 	data := filepath.Join(dir, "data")
+	ids := map[int64]int64{}
 	for _, o := range []struct {
 		id   int64
 		hash string
@@ -59,16 +62,19 @@ func newFilesEnv(t *testing.T) *filesEnv {
 		if err := os.WriteFile(filepath.Join(d, "Show", o.file), []byte("content of "+o.file), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := database.CreateTorrent(ctx, db.Torrent{
+		rec, err := database.CreateTorrent(ctx, db.Torrent{
 			OwnerID: o.id, InfoHash: o.hash, Name: "Show", DataPath: d, Status: db.StatusSeeding,
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
+		ids[o.id] = rec.ID
 	}
 	cfg := config.Config{CookieName: "s", SessionTTL: time.Hour, LoginMaxFailures: 5, LoginBan: time.Minute}
 	ts := httptest.NewServer(New(cfg, svc, database, nil, nil).Handler())
 	t.Cleanup(ts.Close)
-	e := &filesEnv{srv: ts, data: data, adminID: admin.ID, memberID: member.ID, cookies: map[string]*http.Cookie{}}
+	e := &filesEnv{srv: ts, data: data, adminID: admin.ID, memberID: member.ID, cookies: map[string]*http.Cookie{},
+		adminTorrent: ids[admin.ID], memberTorrent: ids[member.ID]}
 	for u, p := range map[string]string{"admin": "adminpw", "member": "memberpw"} {
 		body, _ := json.Marshal(map[string]string{"username": u, "password": p})
 		resp, err := http.Post(ts.URL+"/api/auth/login", "application/json", bytes.NewReader(body))
@@ -78,6 +84,10 @@ func newFilesEnv(t *testing.T) *filesEnv {
 		e.cookies[u] = resp.Cookies()[0]
 	}
 	return e
+}
+
+func (e *filesEnv) tpath(id int64, rest string) string {
+	return fmt.Sprintf("/api/torrents/%d/%s", id, rest)
 }
 
 func (e *filesEnv) do(t *testing.T, user, method, path string, body io.Reader, ct string) (int, []byte) {
@@ -96,42 +106,41 @@ func (e *filesEnv) do(t *testing.T, user, method, path string, body io.Reader, c
 	return resp.StatusCode, b
 }
 
-func TestFilesListScopedToUser(t *testing.T) {
+func TestFilesListScopedToTorrent(t *testing.T) {
 	e := newFilesEnv(t)
-	code, b := e.do(t, "member", "GET", "/api/files?path=/Show", nil, "")
+	code, b := e.do(t, "member", "GET", e.tpath(e.memberTorrent, "files?path=/"), nil, "")
 	if code != 200 || !strings.Contains(string(b), "member-file.txt") || strings.Contains(string(b), "admin-file.txt") {
 		t.Fatalf("%d %s", code, b)
 	}
 	if !strings.Contains(string(b), `"writable":false`) {
 		t.Errorf("member should be read-only: %s", b)
 	}
-	code, b = e.do(t, "admin", "GET", "/api/files?path=/Show", nil, "")
+	code, b = e.do(t, "admin", "GET", e.tpath(e.adminTorrent, "files?path=/"), nil, "")
 	if code != 200 || !strings.Contains(string(b), "admin-file.txt") || !strings.Contains(string(b), `"writable":true`) {
 		t.Fatalf("%d %s", code, b)
 	}
 }
 
-func TestFilesOwnerIDAdminOnly(t *testing.T) {
+func TestFilesForeignTorrentForbidden(t *testing.T) {
 	e := newFilesEnv(t)
-	id := strings.TrimSpace(string(rune('0' + e.adminID)))
-	code, _ := e.do(t, "member", "GET", "/api/files?owner_id="+id, nil, "")
+	code, _ := e.do(t, "member", "GET", e.tpath(e.adminTorrent, "files"), nil, "")
 	if code != http.StatusForbidden {
-		t.Errorf("member owner_id: %d", code)
+		t.Errorf("member on admin torrent: %d", code)
 	}
-	mid := string(rune('0' + e.memberID))
-	code, b := e.do(t, "admin", "GET", "/api/files?path=/Show&owner_id="+mid, nil, "")
+	// Admins may act on any user's torrent (View as).
+	code, b := e.do(t, "admin", "GET", e.tpath(e.memberTorrent, "files"), nil, "")
 	if code != 200 || !strings.Contains(string(b), "member-file.txt") {
-		t.Errorf("admin view-as: %d %s", code, b)
+		t.Errorf("admin on member torrent: %d %s", code, b)
 	}
 }
 
 func TestFilesDownloadAndTraversal(t *testing.T) {
 	e := newFilesEnv(t)
-	code, b := e.do(t, "member", "GET", "/api/files/download?path=/Show/member-file.txt", nil, "")
+	code, b := e.do(t, "member", "GET", e.tpath(e.memberTorrent, "files/download?path=/member-file.txt"), nil, "")
 	if code != 200 || string(b) != "content of member-file.txt" {
 		t.Fatalf("%d %q", code, b)
 	}
-	code, _ = e.do(t, "member", "GET", "/api/files/download?path=/Show/../../x_aaaa/Show/admin-file.txt", nil, "")
+	code, _ = e.do(t, "member", "GET", e.tpath(e.memberTorrent, "files/download?path=/../../x_aaaa/Show/admin-file.txt"), nil, "")
 	if code != http.StatusNotFound {
 		t.Errorf("traversal: %d", code)
 	}
@@ -139,11 +148,11 @@ func TestFilesDownloadAndTraversal(t *testing.T) {
 
 func TestFilesMemberCannotWrite(t *testing.T) {
 	e := newFilesEnv(t)
-	code, _ := e.do(t, "member", "DELETE", "/api/files?path=/Show/member-file.txt", nil, "")
+	code, _ := e.do(t, "member", "DELETE", e.tpath(e.memberTorrent, "files?path=/member-file.txt"), nil, "")
 	if code != http.StatusForbidden {
 		t.Errorf("delete: %d", code)
 	}
-	code, _ = e.do(t, "member", "POST", "/api/files/mkdir", strings.NewReader(`{"path":"/Show/d"}`), "application/json")
+	code, _ = e.do(t, "member", "POST", e.tpath(e.memberTorrent, "files/mkdir"), strings.NewReader(`{"path":"/d"}`), "application/json")
 	if code != http.StatusForbidden {
 		t.Errorf("mkdir: %d", code)
 	}
@@ -151,7 +160,7 @@ func TestFilesMemberCannotWrite(t *testing.T) {
 
 func TestFilesAdminWriteFlow(t *testing.T) {
 	e := newFilesEnv(t)
-	code, _ := e.do(t, "admin", "POST", "/api/files/mkdir", strings.NewReader(`{"path":"/Show/d"}`), "application/json")
+	code, _ := e.do(t, "admin", "POST", e.tpath(e.adminTorrent, "files/mkdir"), strings.NewReader(`{"path":"/d"}`), "application/json")
 	if code != 200 {
 		t.Fatalf("mkdir: %d", code)
 	}
@@ -160,12 +169,12 @@ func TestFilesAdminWriteFlow(t *testing.T) {
 	fw, _ := mw.CreateFormFile("files", "up.txt")
 	fw.Write([]byte("uploaded"))
 	mw.Close()
-	code, b := e.do(t, "admin", "POST", "/api/files/upload?path=/Show/d", &buf, mw.FormDataContentType())
+	code, b := e.do(t, "admin", "POST", e.tpath(e.adminTorrent, "files/upload?path=/d"), &buf, mw.FormDataContentType())
 	if code != 200 || !strings.Contains(string(b), `"uploaded":1`) {
 		t.Fatalf("upload: %d %s", code, b)
 	}
-	code, _ = e.do(t, "admin", "POST", "/api/files/rename",
-		strings.NewReader(`{"from":"/Show/d/up.txt","to":"/Show/up2.txt"}`), "application/json")
+	code, _ = e.do(t, "admin", "POST", e.tpath(e.adminTorrent, "files/rename"),
+		strings.NewReader(`{"from":"/d/up.txt","to":"/up2.txt"}`), "application/json")
 	if code != 200 {
 		t.Fatalf("rename: %d", code)
 	}
@@ -173,12 +182,16 @@ func TestFilesAdminWriteFlow(t *testing.T) {
 	if err != nil || string(got) != "uploaded" {
 		t.Fatalf("file: %q %v", got, err)
 	}
-	code, _ = e.do(t, "admin", "DELETE", "/api/files?path=/Show/d", nil, "")
+	code, _ = e.do(t, "admin", "DELETE", e.tpath(e.adminTorrent, "files?path=/d"), nil, "")
 	if code != 200 {
 		t.Fatalf("delete: %d", code)
 	}
 	if _, err := os.Stat(filepath.Join(e.data, "x_aaaa", "Show", "d")); !os.IsNotExist(err) {
 		t.Errorf("dir still exists: %v", err)
+	}
+	code, _ = e.do(t, "admin", "DELETE", e.tpath(e.adminTorrent, "files?path=/"), nil, "")
+	if code != http.StatusForbidden {
+		t.Errorf("deleting the root: %d", code)
 	}
 }
 

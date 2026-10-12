@@ -9,31 +9,20 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strconv"
 
 	"github.com/lerenn/seedly/internal/db"
 	"github.com/lerenn/seedly/internal/files"
 )
 
-// treeFor returns the file tree of the requested owner. Everyone gets their
-// own files; admins may pass owner_id to act on another user's files. Only
-// admins can modify files.
+// treeFor returns the file tree of the torrent in the URL. Owners and admins
+// may access it; only admins can modify files.
 func (s *Server) treeFor(w http.ResponseWriter, r *http.Request) (*files.Tree, bool) {
-	user := currentUser(r)
-	ownerID := user.ID
-	if p := r.URL.Query().Get("owner_id"); p != "" {
-		if user.Role != db.RoleAdmin {
-			writeError(w, http.StatusForbidden, "forbidden")
-			return nil, false
-		}
-		id, err := strconv.ParseInt(p, 10, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid owner_id")
-			return nil, false
-		}
-		ownerID = id
+	rec, ok := s.loadAuthorizedTorrent(w, r)
+	if !ok {
+		return nil, false
 	}
-	return files.NewTree(s.db, ownerID, user.Role != db.RoleAdmin), true
+	readOnly := currentUser(r).Role != db.RoleAdmin
+	return files.NewTorrentTree(rec.DataPath, readOnly), true
 }
 
 func writeFilesError(w http.ResponseWriter, err error) {

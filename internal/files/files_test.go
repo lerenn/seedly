@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lerenn/seedly/internal/db"
@@ -138,5 +139,49 @@ func TestDuplicateTopNamesDisambiguated(t *testing.T) {
 	es, _ := NewTree(l, 1, true).List(context.Background(), "/")
 	if got := names(es); len(got) != 2 || got[0] != "dup" || got[1] != "dup [22222222]" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+func TestTorrentTreeFlattensSingleFolder(t *testing.T) {
+	l, root := fixture(t)
+	_ = l
+	tr := NewTorrentTree(filepath.Join(root, "1_aaaaaaaa"), false)
+	ctx := context.Background()
+	es, err := tr.List(ctx, "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := names(es); len(got) != 1 || got[0] != "movie.mkv" {
+		t.Fatalf("root: %v", got)
+	}
+	if err := tr.Mkdir(ctx, "/sub"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Rename(ctx, "/movie.mkv", "/sub/m.mkv"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tr.Remove(ctx, "/", true); !errors.Is(err, ErrReadOnly) {
+		t.Errorf("removing root: %v", err)
+	}
+	if _, err := tr.Stat(ctx, "/../../2_cccccccc"); err != nil && !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	if rp, _ := tr.RealPath(ctx, "/../../2_cccccccc"); !strings.HasPrefix(rp, filepath.Join(root, "1_aaaaaaaa")) {
+		t.Errorf("escaped the torrent dir: %q", rp)
+	}
+}
+
+func TestTorrentTreeSingleFileTorrent(t *testing.T) {
+	_, root := fixture(t)
+	tr := NewTorrentTree(filepath.Join(root, "1_bbbbbbbb"), true)
+	es, err := tr.List(context.Background(), "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := names(es); len(got) != 1 || got[0] != "single.iso" {
+		t.Fatalf("root: %v", got)
+	}
+	if err := tr.Remove(context.Background(), "/single.iso", false); !errors.Is(err, ErrReadOnly) {
+		t.Errorf("read-only remove: %v", err)
 	}
 }
