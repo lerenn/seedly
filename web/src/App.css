@@ -708,14 +708,6 @@ button.danger {
   cursor: pointer;
 }
 
-.mode-switch {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.mode-switch button.active {
-  background: var(--accent, #3b82f6);
-}
 
 .rules-grid {
   display: grid;
@@ -729,9 +721,6 @@ button.danger {
   }
 }
 
-.rules-inactive {
-  opacity: 0.6;
-}
 
 .rule-list {
   list-style: none;

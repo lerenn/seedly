@@ -76,7 +76,6 @@ export type TrackerRow = {
 }
 
 export type TrackerOverview = {
-  mode: TrackerMode
   authorize: TrackerRule[]
   deny: TrackerRule[]
   present: TrackerRow[]
@@ -167,11 +166,6 @@ export const api = {
   remove: (id: number) => request<{ status: string }>(`/api/torrents/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: number) => `/api/torrents/${id}/download`,
   trackers: () => request<TrackerOverview>('/api/trackers'),
-  setTrackerMode: (mode: TrackerMode) =>
-    request<TrackerOverview>('/api/trackers/mode', {
-      method: 'PUT',
-      body: JSON.stringify({ mode }),
-    }),
   addTrackerRule: (mode: TrackerMode, pattern: string) =>
     request<TrackerRule>('/api/trackers/rules', {
       method: 'POST',

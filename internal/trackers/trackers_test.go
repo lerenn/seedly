@@ -28,8 +28,8 @@ func TestMatch(t *testing.T) {
 func TestNormalizePattern(t *testing.T) {
 	for in, want := range map[string]string{
 		"udp://Tracker.Example.org:6969/announce": "tracker.example.org",
-		"*.example.org":                            "*.example.org",
-		" example.org:80 ":                         "example.org",
+		"*.example.org":    "*.example.org",
+		" example.org:80 ": "example.org",
 	} {
 		got, err := NormalizePattern(in)
 		if err != nil || got != want {
@@ -45,22 +45,22 @@ func TestNormalizePattern(t *testing.T) {
 
 func TestPolicy(t *testing.T) {
 	rules := []db.TrackerRule{
-		{Mode: db.TrackerModeAuthorize, Pattern: "good.org"},
-		{Mode: db.TrackerModeDeny, Pattern: "*.bad.org"},
+		{Mode: db.TrackerModeAuthorize, Pattern: "*.good.org"},
+		{Mode: db.TrackerModeDeny, Pattern: "bad.good.org"},
 	}
-	auth := NewPolicy(db.TrackerModeAuthorize, rules)
-	if auth.Classify([]string{"good.org"}) != StateOK ||
-		auth.Classify([]string{"other.org"}) != StateDenied ||
-		auth.Classify([]string{"good.org", "other.org"}) != StateWarning {
-		t.Error("authorize mode misclassified")
+	p := NewPolicy(rules)
+	if p.Classify([]string{"a.good.org"}) != StateOK ||
+		p.Classify([]string{"other.org"}) != StateDenied ||
+		p.Classify([]string{"bad.good.org"}) != StateDenied ||
+		p.Classify([]string{"a.good.org", "other.org"}) != StateWarning ||
+		p.Classify(nil) != StateOK {
+		t.Error("combined policy misclassified")
 	}
-	deny := NewPolicy(db.TrackerModeDeny, rules)
-	if deny.Classify([]string{"x.bad.org"}) != StateDenied ||
-		deny.Classify([]string{"x.bad.org", "ok.org"}) != StateWarning ||
-		deny.Classify(nil) != StateOK {
-		t.Error("deny mode misclassified")
+	if NewPolicy(nil).Blocked("anything.org") {
+		t.Error("no rules must allow all")
 	}
-	if NewPolicy(db.TrackerModeAuthorize, nil).Blocked("anything.org") {
-		t.Error("empty authorize list must allow all")
+	deny := NewPolicy([]db.TrackerRule{{Mode: db.TrackerModeDeny, Pattern: "*.bad.org"}})
+	if !deny.Blocked("x.bad.org") || deny.Blocked("ok.org") {
+		t.Error("deny-only policy misclassified")
 	}
 }

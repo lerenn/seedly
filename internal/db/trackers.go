@@ -13,6 +13,7 @@ const (
 	TrackerModeDeny      TrackerMode = "deny"
 )
 
+// TrackerMode is the kind of a rule: authorize (allow list) or deny (block list).
 func (m TrackerMode) Valid() bool {
 	return m == TrackerModeAuthorize || m == TrackerModeDeny
 }
@@ -22,32 +23,6 @@ type TrackerRule struct {
 	Mode      TrackerMode `json:"mode"`
 	Pattern   string      `json:"pattern"`
 	CreatedAt time.Time   `json:"created_at"`
-}
-
-const trackerModeKey = "tracker_mode"
-
-func (d *DB) GetTrackerMode(ctx context.Context) (TrackerMode, error) {
-	var v string
-	err := d.SQL.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, trackerModeKey).Scan(&v)
-	if err == sql.ErrNoRows {
-		return TrackerModeDeny, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	if m := TrackerMode(v); m.Valid() {
-		return m, nil
-	}
-	return TrackerModeDeny, nil
-}
-
-func (d *DB) SetTrackerMode(ctx context.Context, m TrackerMode) error {
-	_, err := d.SQL.ExecContext(ctx,
-		`INSERT INTO settings (key, value) VALUES (?, ?)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		trackerModeKey, string(m),
-	)
-	return err
 }
 
 func (d *DB) ListTrackerRules(ctx context.Context) ([]TrackerRule, error) {
