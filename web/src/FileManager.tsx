@@ -10,12 +10,26 @@ function parent(dir: string): string {
   return i <= 0 ? '/' : dir.slice(0, i)
 }
 
-export function FileManager({ torrentId }: { torrentId: number }) {
+async function collectFiles(torrentId: number, dir: string): Promise<string[]> {
+  const res = await api.listFiles(torrentId, dir)
+  const out: string[] = []
+  for (const e of res.entries) {
+    const full = join(dir, e.name)
+    if (e.is_dir) out.push(...(await collectFiles(torrentId, full)))
+    else out.push(full)
+  }
+  return out
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?: string }) {
   const [dir, setDir] = useState('/')
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [writable, setWritable] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
 
   const load = useCallback(
     async (path: string) => {
@@ -48,11 +62,45 @@ export function FileManager({ torrentId }: { torrentId: number }) {
     }
   }
 
+  // Starts one browser download per file; browsers may ask to allow multiple downloads.
+  async function downloadSeparately() {
+    setBusy(true)
+    try {
+      const paths = await collectFiles(torrentId, '/')
+      for (let i = 0; i < paths.length; i++) {
+        setProgress(`Downloading ${i + 1}/${paths.length}…`)
+        const a = document.createElement('a')
+        a.href = api.fileDownloadUrl(torrentId, paths[i])
+        a.download = ''
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        await sleep(400)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setProgress('')
+      setBusy(false)
+    }
+  }
+
   const crumbs = dir === '/' ? [] : dir.slice(1).split('/')
 
   return (
     <section className="file-manager">
       <h3>Files</h3>
+
+      {zipUrl ? (
+        <div className="fm-downloads">
+          <a className="button" href={zipUrl}>
+            Download All (ZIP)
+          </a>
+          <button type="button" disabled={busy} onClick={() => void downloadSeparately()}>
+            {progress || 'Download All (Separately)'}
+          </button>
+        </div>
+      ) : null}
 
       {dir !== '/' ? (
         <nav className="fm-crumbs" aria-label="Path">
