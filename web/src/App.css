@@ -822,17 +822,6 @@ button.danger {
   font-size: 0.78rem;
 }
 
-.fm-row-actions {
-  display: flex;
-  gap: 0.25rem;
-  flex: none;
-}
-
-.fm-row-actions button {
-  padding: 0.15rem 0.4rem;
-  font-size: 0.75rem;
-}
-
 .fm-note {
   margin: 0 0 0.75rem;
 }

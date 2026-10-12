@@ -26,7 +26,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?: string }) {
   const [dir, setDir] = useState('/')
   const [entries, setEntries] = useState<FileEntry[]>([])
-  const [writable, setWritable] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
@@ -38,7 +37,6 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
         const res = await api.listFiles(torrentId, path)
         setDir(res.path)
         setEntries(res.entries)
-        setWritable(res.writable)
         setError('')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not list files')
@@ -50,18 +48,6 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
   useEffect(() => {
     void load('/')
   }, [load])
-
-  async function run(op: () => Promise<unknown>) {
-    setBusy(true)
-    try {
-      await op()
-      await load(dir)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operation failed')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   function toggle(path: string, isDir: boolean) {
     setSelected((cur) => {
@@ -168,32 +154,6 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
                 </a>
               )}
               {e.is_dir ? null : <span className="muted fm-size">{formatBytes(e.size)}</span>}
-              {writable ? (
-                <span className="fm-row-actions">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const to = prompt('New name', e.name)?.trim()
-                      if (to && to !== e.name) {
-                        void run(() => api.renameFile(torrentId, full, join(dir, to)))
-                      }
-                    }}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    disabled={busy}
-                    onClick={() => {
-                      if (confirm(`Delete “${e.name}”?`)) void run(() => api.deleteFile(torrentId, full))
-                    }}
-                  >
-                    Delete
-                  </button>
-                </span>
-              ) : null}
             </li>
           )
         })}
