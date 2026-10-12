@@ -28,11 +28,13 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState('')
   const [selected, setSelected] = useState<Map<string, boolean>>(new Map()) // path -> is_dir
 
   const load = useCallback(
     async (path: string) => {
+      setLoading(true)
       try {
         const res = await api.listFiles(torrentId, path)
         setDir(res.path)
@@ -40,6 +42,8 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
         setError('')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not list files')
+      } finally {
+        setLoading(false)
       }
     },
     [torrentId],
@@ -157,7 +161,9 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
             </li>
           )
         })}
-        {entries.length === 0 ? <li className="muted">Empty</li> : null}
+        {entries.length === 0 ? (
+          <li className="muted">{loading ? 'Loading...' : 'Empty'}</li>
+        ) : null}
       </ul>
     </section>
   )
