@@ -54,6 +54,7 @@ Open http://localhost:8080 and sign in with:
 
 - Local username/password sessions; first admin bootstrapped from env when the DB is empty
 - Users see only their torrents; admins can switch **View as** another user
+- Access your torrent files over FTPS and from the **Files** side panel in the UI (read-only for members, read-write for admins)
 - Add torrents via `.torrent` upload, one or several files at a time (per-file errors are reported without blocking the rest)
 - Progress / status / peers / downloaded / uploaded with pause, resume, delete
 - Completed torrents keep seeding until paused or deleted
@@ -125,7 +126,12 @@ Then upload `.testdata/hello.torrent` in the UI while the webseed server is runn
 
 ## FTP
 
-Explicit FTPS (`AUTH TLS`); plaintext logins are refused unless `SEEDLY_FTP_ALLOW_PLAINTEXT=true`.
-Log in with your Seedly username and password. Each user only sees their own torrents' files
-(the root lists the content of their torrents). Members are read-only; admins can also upload,
-rename, delete and create folders. The same tree is available in the web UI via **Files**.
+Explicit FTPS (`AUTH TLS`) on `SEEDLY_FTP_LISTEN`; plaintext logins are refused unless
+`SEEDLY_FTP_ALLOW_PLAINTEXT=true`. Log in with your Seedly username and password.
+
+- **Scope:** each user only sees their own torrents' files (the root lists the content of their torrents). Members are read-only; admins can also upload, rename, delete and create folders. The same tree is available in the web UI via **Files**, and admins following "View as" see that user's files.
+- **Brute force:** failed logins (web and FTP) are throttled per IP — see `SEEDLY_LOGIN_MAX_FAILURES` / `SEEDLY_LOGIN_BAN`.
+- **Ports:** publish the control port (e.g. `21:2121`) and the whole `SEEDLY_FTP_PASV_PORTS` range, and open them in your firewall. Set `SEEDLY_FTP_PUBLIC_HOST` to the public hostname.
+- **TLS** — pick one:
+  - *Existing certificate files:* mount them and set `SEEDLY_FTP_TLS_CERT_FILE` / `SEEDLY_FTP_TLS_KEY_FILE` (e.g. certbot output copied by a deploy hook so the container user can read the key). They are reloaded when the files change.
+  - *Built-in Let's Encrypt:* set `SEEDLY_FTP_TLS_ACME_DOMAIN`, `..._DNS_PROVIDER` and the provider's credential env vars (DNS-01). Try the staging CA first via `SEEDLY_FTP_TLS_ACME_CA_URL`.
