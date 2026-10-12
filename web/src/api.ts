@@ -188,15 +188,6 @@ export const api = {
     request<FileListing>(`/api/torrents/${torrentId}/files?${fileQuery(path)}`),
   fileDownloadUrl: (torrentId: number, path: string) =>
     `/api/torrents/${torrentId}/files/download?${fileQuery(path)}`,
-  renameFile: (torrentId: number, from: string, to: string) =>
-    request<{ status: string }>(`/api/torrents/${torrentId}/files/rename`, {
-      method: 'POST',
-      body: JSON.stringify({ from, to }),
-    }),
-  deleteFile: (torrentId: number, path: string) =>
-    request<{ status: string }>(`/api/torrents/${torrentId}/files?${fileQuery(path)}`, {
-      method: 'DELETE',
-    }),
 }
 
 function fileQuery(path: string): string {
