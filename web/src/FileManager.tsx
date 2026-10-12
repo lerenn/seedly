@@ -30,6 +30,7 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
+  const [selected, setSelected] = useState<Map<string, boolean>>(new Map()) // path -> is_dir
 
   const load = useCallback(
     async (path: string) => {
@@ -62,11 +63,25 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
     }
   }
 
-  // Starts one browser download per file; browsers may ask to allow multiple downloads.
-  async function downloadSeparately() {
+  function toggle(path: string, isDir: boolean) {
+    setSelected((cur) => {
+      const next = new Map(cur)
+      if (next.has(path)) next.delete(path)
+      else next.set(path, isDir)
+      return next
+    })
+  }
+
+  // Starts one browser download per selected file (folders are expanded);
+  // browsers may ask to allow multiple downloads.
+  async function downloadSelected() {
     setBusy(true)
     try {
-      const paths = await collectFiles(torrentId, '/')
+      const paths: string[] = []
+      for (const [sel, isDir] of selected) {
+        if (isDir) paths.push(...(await collectFiles(torrentId, sel)))
+        else paths.push(sel)
+      }
       for (let i = 0; i < paths.length; i++) {
         setProgress(`Downloading ${i + 1}/${paths.length}…`)
         const a = document.createElement('a')
@@ -96,8 +111,12 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
           <a className="button" href={zipUrl}>
             Download All (ZIP)
           </a>
-          <button type="button" disabled={busy} onClick={() => void downloadSeparately()}>
-            {progress || 'Download All (Separately)'}
+          <button
+            type="button"
+            disabled={busy || selected.size === 0}
+            onClick={() => void downloadSelected()}
+          >
+            {progress || `Download Selected${selected.size ? ` (${selected.size})` : ''}`}
           </button>
         </div>
       ) : null}
@@ -132,6 +151,13 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
           const full = join(dir, e.name)
           return (
             <li key={e.name}>
+              <input
+                type="checkbox"
+                className="fm-check"
+                aria-label={`Select ${e.name}`}
+                checked={selected.has(full)}
+                onChange={() => toggle(full, e.is_dir)}
+              />
               {e.is_dir ? (
                 <button type="button" className="fm-name" onClick={() => void load(full)}>
                   📁 {e.name}

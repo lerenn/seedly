@@ -858,3 +858,8 @@ button.danger {
   gap: 0.4rem;
   margin-bottom: 0.75rem;
 }
+
+.fm-check {
+  flex: none;
+  margin: 0;
+}
