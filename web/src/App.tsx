@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type TorrentStatus, type TrackerMode, type TrackerOverview, type TrackerRow, type TrackerRule, type TorrentView, type UploadFailure, type User } from './api'
+import { api, formatBytes, formatDateTime, formatPct, formatRatio, type DiskUsage, type Settings, type TorrentStatus, type TrackerMode, type TrackerOverview, type TrackerRow, type TrackerRule, type TorrentView, type UploadFailure, type User } from './api'
 import { FileManager } from './FileManager'
 import './App.css'
 
 type Filter = 'all' | TorrentStatus
-type Panel = 'torrents' | 'users' | 'trackers'
+type Panel = 'torrents' | 'users' | 'trackers' | 'settings'
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
@@ -291,6 +291,15 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
               onClick={() => setPanel('trackers')}
             >
               <span>Trackers</span>
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
+              type="button"
+              className={panel === 'settings' ? 'nav-item active' : 'nav-item'}
+              onClick={() => setPanel('settings')}
+            >
+              <span>Settings</span>
             </button>
           ) : null}
         </nav>
@@ -616,6 +625,8 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
           </>
         ) : panel === 'trackers' ? (
           <TrackersPanel onError={setError} error={error} />
+        ) : panel === 'settings' ? (
+          <SettingsPanel onError={setError} error={error} />
         ) : (
           <UsersPanel
             currentUser={user}
@@ -884,6 +895,96 @@ function UsersPanel({
             Future settings (quotas, bandwidth limits, …) will appear here per user.
           </p>
         </section>
+      </div>
+    </>
+  )
+}
+
+const GB = 1024 ** 3
+
+function SettingsPanel({ onError, error }: { onError: (msg: string) => void; error: string }) {
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [quota, setQuota] = useState('')
+  const [buffer, setBuffer] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function apply(s: Settings) {
+    setSettings(s)
+    setQuota(s.quota_bytes ? String(s.quota_bytes / GB) : '')
+    setBuffer(s.buffer_bytes ? String(s.buffer_bytes / GB) : '')
+  }
+
+  useEffect(() => {
+    api
+      .settings()
+      .then((s) => {
+        apply(s)
+        onError('')
+      })
+      .catch((err) => onError(err instanceof Error ? err.message : 'Failed to load settings'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const q = Math.round((parseFloat(quota) || 0) * GB)
+      const b = Math.round((parseFloat(buffer) || 0) * GB)
+      apply(await api.updateSettings(q, b))
+      onError('')
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <header className="topbar">
+        <div className="topbar-title">
+          <h1>Settings</h1>
+          {settings ? <span className="muted">{formatBytes(settings.used_bytes)} used</span> : null}
+        </div>
+      </header>
+
+      {error ? <p className="error banner">{error}</p> : null}
+
+      <div className="users-panel">
+        <form className="users-form" style={{ gridTemplateColumns: "1fr", maxWidth: "28rem" }} onSubmit={save}>
+          <h2>Disk quota</h2>
+          <p className="muted">
+            When a new torrent would bring Seedly&apos;s data above quota minus buffer, the oldest
+            completed torrent of the user holding the most space is removed, repeatedly, until it
+            fits. Leave the quota empty to disable.
+          </p>
+          <label>
+            Quota (GB)
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={quota}
+              onChange={(e) => setQuota(e.target.value)}
+              placeholder="No limit"
+            />
+          </label>
+          <label>
+            Buffer (GB)
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={buffer}
+              onChange={(e) => setBuffer(e.target.value)}
+              placeholder="0"
+            />
+          </label>
+          <button type="submit" disabled={busy || !settings}>
+            Save
+          </button>
+        </form>
       </div>
     </>
   )
