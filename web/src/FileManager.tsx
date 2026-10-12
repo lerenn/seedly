@@ -54,46 +54,20 @@ export function FileManager({ torrentId }: { torrentId: number }) {
     <section className="file-manager">
       <h3>Files</h3>
 
-      <nav className="fm-crumbs" aria-label="Path">
-        <button type="button" onClick={() => void load('/')}>
-          /
-        </button>
-        {crumbs.map((c, i) => (
-          <span key={i}>
-            <button type="button" onClick={() => void load('/' + crumbs.slice(0, i + 1).join('/'))}>
-              {c}
-            </button>
-            {i < crumbs.length - 1 ? ' / ' : ''}
-          </span>
-        ))}
-      </nav>
-
-      {writable ? (
-        <div className="detail-actions fm-actions">
-          <label className="button fm-upload">
-            Upload
-            <input
-              type="file"
-              multiple
-              disabled={busy}
-              onChange={(e) => {
-                const picked = Array.from(e.target.files ?? [])
-                e.target.value = ''
-                if (picked.length) void run(() => api.uploadFiles(torrentId, dir, picked))
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              const name = prompt('Folder name')?.trim()
-              if (name) void run(() => api.mkdir(torrentId, join(dir, name)))
-            }}
-          >
-            New folder
+      {dir !== '/' ? (
+        <nav className="fm-crumbs" aria-label="Path">
+          <button type="button" onClick={() => void load('/')}>
+            /
           </button>
-        </div>
+          {crumbs.map((c, i) => (
+            <span key={i}>
+              <button type="button" onClick={() => void load('/' + crumbs.slice(0, i + 1).join('/'))}>
+                {c}
+              </button>
+              {i < crumbs.length - 1 ? ' / ' : ''}
+            </span>
+          ))}
+        </nav>
       ) : null}
 
       {error ? <p className="error">{error}</p> : null}
