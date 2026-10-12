@@ -57,16 +57,25 @@ func (s *Service) BootstrapAdmin(ctx context.Context, username, password string)
 	return err
 }
 
-func (s *Service) Login(ctx context.Context, username, password string) (token string, user *db.User, err error) {
-	user, err = s.db.GetUserByUsername(ctx, username)
+// Authenticate checks the credentials and returns the matching user.
+func (s *Service) Authenticate(ctx context.Context, username, password string) (*db.User, error) {
+	user, err := s.db.GetUserByUsername(ctx, username)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil, ErrInvalidCredentials
+			return nil, ErrInvalidCredentials
 		}
-		return "", nil, err
+		return nil, err
 	}
 	if !CheckPassword(user.PasswordHash, password) {
-		return "", nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
+	}
+	return user, nil
+}
+
+func (s *Service) Login(ctx context.Context, username, password string) (token string, user *db.User, err error) {
+	user, err = s.Authenticate(ctx, username, password)
+	if err != nil {
+		return "", nil, err
 	}
 	token, err = randomToken(32)
 	if err != nil {

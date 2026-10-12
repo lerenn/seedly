@@ -82,6 +82,19 @@ export type TrackerOverview = {
   present: TrackerRow[]
 }
 
+export type FileEntry = {
+  name: string
+  is_dir: boolean
+  size: number
+  modified: string
+}
+
+export type FileListing = {
+  path: string
+  writable: boolean
+  entries: FileEntry[]
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'include',
@@ -177,6 +190,37 @@ export const api = {
       body: JSON.stringify({ host }),
     }),
   disk: () => request<DiskUsage>('/api/disk'),
+  listFiles: (path: string, ownerId?: number) =>
+    request<FileListing>(`/api/files?${fileQuery(path, ownerId)}`),
+  fileDownloadUrl: (path: string, ownerId?: number) =>
+    `/api/files/download?${fileQuery(path, ownerId)}`,
+  uploadFiles: async (dir: string, files: File[], ownerId?: number) => {
+    const fd = new FormData()
+    for (const f of files) fd.append('files', f)
+    return request<{ uploaded: number }>(`/api/files/upload?${fileQuery(dir, ownerId)}`, {
+      method: 'POST',
+      body: fd,
+    })
+  },
+  mkdir: (path: string, ownerId?: number) =>
+    request<{ status: string }>(`/api/files/mkdir?${fileQuery('', ownerId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  renameFile: (from: string, to: string, ownerId?: number) =>
+    request<{ status: string }>(`/api/files/rename?${fileQuery('', ownerId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+  deleteFile: (path: string, ownerId?: number) =>
+    request<{ status: string }>(`/api/files?${fileQuery(path, ownerId)}`, { method: 'DELETE' }),
+}
+
+function fileQuery(path: string, ownerId?: number): string {
+  const q = new URLSearchParams()
+  if (path) q.set('path', path)
+  if (ownerId != null) q.set('owner_id', String(ownerId))
+  return q.toString()
 }
 
 export function formatBytes(n: number): string {

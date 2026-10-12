@@ -4,6 +4,8 @@ services:
     build: .
     ports:
       - "8080:8080"
+      - "21:2121"
+      - "30000-30009:30000-30009"
     environment:
       SEEDLY_ADMIN_USERNAME: admin
       SEEDLY_ADMIN_PASSWORD: ${SEEDLY_ADMIN_PASSWORD:-changeme}
@@ -12,10 +14,19 @@ services:
       SEEDLY_DOWNLOADS_PATH: /data/downloads
       SEEDLY_WEB_PATH: /web/dist
       SEEDLY_LISTEN: ":8080"
+      # FTP/FTPS access to the torrent files (disabled unless enabled here).
+      SEEDLY_FTP_ENABLED: ${SEEDLY_FTP_ENABLED:-false}
+      SEEDLY_FTP_PUBLIC_HOST: ${SEEDLY_FTP_PUBLIC_HOST:-}
+      SEEDLY_FTP_TLS_ACME_DOMAIN: ${SEEDLY_FTP_TLS_ACME_DOMAIN:-}
+      SEEDLY_FTP_TLS_ACME_EMAIL: ${SEEDLY_FTP_TLS_ACME_EMAIL:-}
+      SEEDLY_FTP_TLS_ACME_DNS_PROVIDER: ${SEEDLY_FTP_TLS_ACME_DNS_PROVIDER:-}
+      SEEDLY_FTP_TLS_CERT_FILE: ${SEEDLY_FTP_TLS_CERT_FILE:-}
+      SEEDLY_FTP_TLS_KEY_FILE: ${SEEDLY_FTP_TLS_KEY_FILE:-}
     volumes:
       - seedly-db:/data/db
       - seedly-meta:/data/meta
       - seedly-data:/data/downloads
+      - seedly-certs:/data/certs
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
       interval: 30s
@@ -27,3 +38,4 @@ volumes:
   seedly-db:
   seedly-meta:
   seedly-data:
+  seedly-certs:

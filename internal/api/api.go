@@ -72,6 +72,12 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/torrents/{id}/resume", s.handleResumeTorrent)
 			r.Delete("/torrents/{id}", s.handleDeleteTorrent)
 			r.Get("/torrents/{id}/download", s.handleDownloadTorrent)
+			r.Get("/files", s.handleFilesList)
+			r.Delete("/files", s.handleFilesDelete)
+			r.Get("/files/download", s.handleFilesDownload)
+			r.Post("/files/upload", s.handleFilesUpload)
+			r.Post("/files/mkdir", s.handleFilesMkdir)
+			r.Post("/files/rename", s.handleFilesRename)
 		})
 	})
 
