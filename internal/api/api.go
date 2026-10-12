@@ -77,6 +77,8 @@ func (s *Server) Handler() http.Handler {
 			r.Patch("/trackers/rules/{id}", s.handleUpdateTrackerRule)
 			r.Delete("/trackers/rules/{id}", s.handleDeleteTrackerRule)
 			r.Post("/trackers/purge", s.handlePurgeTracker)
+			r.Get("/settings", s.handleGetSettings)
+			r.Put("/settings", s.handleUpdateSettings)
 			r.Get("/torrents", s.handleListTorrents)
 			r.Post("/torrents", s.handleUploadTorrent)
 			r.Get("/torrents/{id}", s.handleGetTorrent)
@@ -650,4 +652,70 @@ func clientKey(r *http.Request) string {
 		}
 	}
 	return ip
+}
+
+type settingsBody struct {
+	QuotaBytes  int64 `json:"quota_bytes"`
+	BufferBytes int64 `json:"buffer_bytes"`
+	UsedBytes   int64 `json:"used_bytes"`
+}
+
+func (s *Server) loadSettings(r *http.Request) (settingsBody, error) {
+	var out settingsBody
+	var err error
+	if out.QuotaBytes, err = s.db.GetInt64Setting(r.Context(), db.SettingQuotaBytes); err != nil {
+		return out, err
+	}
+	if out.BufferBytes, err = s.db.GetInt64Setting(r.Context(), db.SettingBufferBytes); err != nil {
+		return out, err
+	}
+	if used, err := s.engine.UsedBytes(); err == nil {
+		out.UsedBytes = used
+	}
+	return out, nil
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	out, err := s.loadSettings(r)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load settings failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
+	var body settingsBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.QuotaBytes < 0 || body.BufferBytes < 0 {
+		writeError(w, http.StatusBadRequest, "sizes must not be negative")
+		return
+	}
+	if body.QuotaBytes > 0 && body.BufferBytes >= body.QuotaBytes {
+		writeError(w, http.StatusBadRequest, "buffer must be smaller than the quota")
+		return
+	}
+	if err := s.db.SetInt64Setting(r.Context(), db.SettingQuotaBytes, body.QuotaBytes); err != nil {
+		writeError(w, http.StatusInternalServerError, "save settings failed")
+		return
+	}
+	if err := s.db.SetInt64Setting(r.Context(), db.SettingBufferBytes, body.BufferBytes); err != nil {
+		writeError(w, http.StatusInternalServerError, "save settings failed")
+		return
+	}
+	out, err := s.loadSettings(r)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "load settings failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

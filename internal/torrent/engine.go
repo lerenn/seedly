@@ -25,6 +25,7 @@ type Engine struct {
 	mu            sync.Mutex
 	byID          map[int64]*liveTorrent
 	flushMu       sync.Mutex
+	addMu         sync.Mutex
 	done          chan struct{}
 }
 
@@ -184,6 +185,10 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 		return nil, fmt.Errorf("%q uses only unauthorized trackers: %s", info.Name, strings.Join(hosts, ", "))
 	}
 
+	// Serialize adds so concurrent uploads can't both claim the same free space.
+	e.addMu.Lock()
+	defer e.addMu.Unlock()
+
 	// Meta and data paths are keyed by owner + info hash, so a re-add would write
 	// over an existing torrent's files. Reject it up front instead.
 	exists, err := e.db.TorrentExists(ctx, ownerID, infoHash)
@@ -192,6 +197,10 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 	}
 	if exists {
 		return nil, fmt.Errorf("%q is already added", info.Name)
+	}
+
+	if err := e.makeRoom(ctx, ownerID, info.TotalLength(), info.Name); err != nil {
+		return nil, err
 	}
 
 	metaFile := filepath.Join(e.metaPath, fmt.Sprintf("%d_%s.torrent", ownerID, infoHash))

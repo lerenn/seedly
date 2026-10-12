@@ -64,6 +64,26 @@ func UsageFor(downloadsPath, metaPath, dbPath string) (Usage, error) {
 	return u, nil
 }
 
+// SeedlyBytes sums the regular-file sizes under the given paths, ignoring
+// missing ones. Unlike UsageFor it does not depend on the filesystem.
+func SeedlyBytes(paths ...string) (uint64, error) {
+	var total uint64
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		n, err := dirSize(p)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return 0, err
+		}
+		total += n
+	}
+	return total, nil
+}
+
 func sameFilesystem(a, b string) bool {
 	var sa, sb syscall.Stat_t
 	if err := syscall.Stat(a, &sa); err != nil {

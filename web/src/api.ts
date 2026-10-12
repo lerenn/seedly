@@ -54,6 +54,12 @@ export type DiskUsage = {
   other_bytes: number
 }
 
+export type Settings = {
+  quota_bytes: number
+  buffer_bytes: number
+  used_bytes: number
+}
+
 export type TrackerMode = 'authorize' | 'deny'
 
 export type TrackerRule = {
@@ -182,6 +188,12 @@ export const api = {
     request<{ removed: number }>('/api/trackers/purge', {
       method: 'POST',
       body: JSON.stringify({ host }),
+    }),
+  settings: () => request<Settings>('/api/settings'),
+  updateSettings: (quota_bytes: number, buffer_bytes: number) =>
+    request<Settings>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ quota_bytes, buffer_bytes }),
     }),
   disk: () => request<DiskUsage>('/api/disk'),
   listFiles: (torrentId: number, path: string) =>
