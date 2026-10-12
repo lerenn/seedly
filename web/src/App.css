@@ -809,7 +809,10 @@ button.danger {
   background: transparent;
   color: var(--ink);
   padding: 0;
-  word-break: break-word;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
   text-decoration: none;
   cursor: pointer;
 }
