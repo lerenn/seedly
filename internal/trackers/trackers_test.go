@@ -28,8 +28,8 @@ func TestMatch(t *testing.T) {
 func TestNormalizePattern(t *testing.T) {
 	for in, want := range map[string]string{
 		"udp://Tracker.Example.org:6969/announce": "tracker.example.org",
-		"*.example.org":    "*.example.org",
-		" example.org:80 ": "example.org",
+		"*.example.org":                            "*.example.org",
+		" example.org:80 ":                         "example.org",
 	} {
 		got, err := NormalizePattern(in)
 		if err != nil || got != want {
