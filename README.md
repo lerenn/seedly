@@ -58,6 +58,7 @@ Open http://localhost:8080 and sign in with:
 - Add torrents via `.torrent` upload, one or several files at a time (per-file errors are reported without blocking the rest)
 - Progress / status / peers / downloaded / uploaded with pause, resume, delete
 - Completed torrents keep seeding until paused or deleted
+- Best-effort disk quota (admin **Settings**: quota and buffer in GB): before a torrent is added, if the data directory would exceed quota minus buffer, the oldest completed torrent of the user holding the most space is removed, repeatedly, until it fits; a torrent too large for the quota is rejected
 - Download completed content from the UI (single file, or streamed zip for multi-file)
 
 ## Local development
