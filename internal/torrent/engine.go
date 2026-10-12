@@ -23,7 +23,20 @@ type Engine struct {
 	metaPath      string
 	downloadsPath string
 	mu            sync.Mutex
-	byID          map[int64]*torrent.Torrent
+	byID          map[int64]*liveTorrent
+	flushMu       sync.Mutex
+	done          chan struct{}
+}
+
+// statsFlushInterval bounds how much transfer accounting is lost on a crash.
+const statsFlushInterval = 30 * time.Second
+
+// liveTorrent tracks how much of the client's per-session transfer counters
+// has already been added to the torrent's persisted totals.
+type liveTorrent struct {
+	tt          *torrent.Torrent
+	flushedUp   int64
+	flushedDown int64
 }
 
 type LiveStats struct {
@@ -64,17 +77,68 @@ func New(database *db.DB, metaPath, downloadsPath string) (*Engine, error) {
 		return nil, fmt.Errorf("torrent client: %w", err)
 	}
 
-	return &Engine{
+	e := &Engine{
 		client:        client,
 		db:            database,
 		metaPath:      metaPath,
 		downloadsPath: downloadsPath,
-		byID:          make(map[int64]*torrent.Torrent),
-	}, nil
+		byID:          make(map[int64]*liveTorrent),
+		done:          make(chan struct{}),
+	}
+	go e.flushLoop()
+	return e, nil
 }
 
 func (e *Engine) Close() {
+	close(e.done)
+	e.flushAll()
 	e.client.Close()
+}
+
+func (e *Engine) flushLoop() {
+	ticker := time.NewTicker(statsFlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			e.flushAll()
+		case <-e.done:
+			return
+		}
+	}
+}
+
+func (e *Engine) flushAll() {
+	e.mu.Lock()
+	live := make(map[int64]*liveTorrent, len(e.byID))
+	for id, lt := range e.byID {
+		live[id] = lt
+	}
+	e.mu.Unlock()
+	for id, lt := range live {
+		e.flush(id, lt)
+	}
+}
+
+// flush adds the transfer bytes accumulated since the last flush to the
+// torrent's persisted totals.
+func (e *Engine) flush(id int64, lt *liveTorrent) {
+	e.flushMu.Lock()
+	defer e.flushMu.Unlock()
+	stats := lt.tt.Stats()
+	up, down := stats.BytesWrittenData.Int64(), stats.BytesReadData.Int64()
+	e.mu.Lock()
+	deltaUp, deltaDown := up-lt.flushedUp, down-lt.flushedDown
+	e.mu.Unlock()
+	if deltaUp == 0 && deltaDown == 0 {
+		return
+	}
+	if err := e.db.AddTorrentTransfer(context.Background(), id, deltaUp, deltaDown); err != nil {
+		return
+	}
+	e.mu.Lock()
+	lt.flushedUp, lt.flushedDown = up, down
+	e.mu.Unlock()
 }
 
 func (e *Engine) Reload(ctx context.Context) error {
@@ -93,7 +157,7 @@ func (e *Engine) Reload(ctx context.Context) error {
 		}
 		tt.DownloadAll()
 		e.mu.Lock()
-		e.byID[t.ID] = tt
+		e.byID[t.ID] = &liveTorrent{tt: tt}
 		e.mu.Unlock()
 		go e.watchCompletion(t.ID, tt)
 	}
@@ -168,7 +232,7 @@ func (e *Engine) AddFromTorrentFile(ctx context.Context, ownerID int64, torrentB
 	tt.DownloadAll()
 
 	e.mu.Lock()
-	e.byID[rec.ID] = tt
+	e.byID[rec.ID] = &liveTorrent{tt: tt}
 	e.mu.Unlock()
 	go e.watchCompletion(rec.ID, tt)
 
@@ -205,13 +269,14 @@ func (e *Engine) watchCompletion(id int64, tt *torrent.Torrent) {
 
 func (e *Engine) Pause(ctx context.Context, id int64) error {
 	e.mu.Lock()
-	tt, ok := e.byID[id]
+	lt, ok := e.byID[id]
 	if ok {
 		delete(e.byID, id)
 	}
 	e.mu.Unlock()
 	if ok {
-		tt.Drop()
+		e.flush(id, lt)
+		lt.tt.Drop()
 	}
 	return e.db.UpdateTorrentStatus(ctx, id, db.StatusPaused, "", nil)
 }
@@ -237,7 +302,7 @@ func (e *Engine) Resume(ctx context.Context, id int64) error {
 	}
 	tt.DownloadAll()
 	e.mu.Lock()
-	e.byID[id] = tt
+	e.byID[id] = &liveTorrent{tt: tt}
 	e.mu.Unlock()
 	go e.watchCompletion(id, tt)
 
@@ -254,13 +319,13 @@ func (e *Engine) Delete(ctx context.Context, id int64, removeData bool) error {
 		return err
 	}
 	e.mu.Lock()
-	tt, ok := e.byID[id]
+	lt, ok := e.byID[id]
 	if ok {
 		delete(e.byID, id)
 	}
 	e.mu.Unlock()
 	if ok {
-		tt.Drop()
+		lt.tt.Drop()
 	}
 	if err := e.db.DeleteTorrent(ctx, id); err != nil {
 		return err
@@ -295,23 +360,34 @@ func (e *Engine) ListForOwner(ctx context.Context, ownerID int64) ([]TorrentView
 func (e *Engine) LiveTorrent(id int64) (*torrent.Torrent, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	tt, ok := e.byID[id]
-	return tt, ok
+	lt, ok := e.byID[id]
+	if !ok {
+		return nil, false
+	}
+	return lt.tt, true
 }
 
 func (e *Engine) view(rec *db.Torrent) *TorrentView {
 	v := &TorrentView{Torrent: *rec}
 	e.mu.Lock()
-	tt, ok := e.byID[rec.ID]
+	lt, ok := e.byID[rec.ID]
+	var flushedUp, flushedDown int64
+	if ok {
+		flushedUp, flushedDown = lt.flushedUp, lt.flushedDown
+	}
 	e.mu.Unlock()
-	if !ok || tt.Info() == nil {
-		v.Stats = LiveStats{}
+	if !ok || lt.tt.Info() == nil {
+		v.Stats = LiveStats{
+			Downloaded: rec.DownloadedBytes,
+			Uploaded:   rec.UploadedBytes,
+		}
 		if rec.Status == db.StatusSeeding || rec.CompletedAt != nil {
 			v.Stats.Complete = true
 			v.Stats.Progress = 1
 		}
 		return v
 	}
+	tt := lt.tt
 	stats := tt.Stats()
 	completed := tt.BytesCompleted()
 	total := tt.Length()
@@ -328,8 +404,8 @@ func (e *Engine) view(rec *db.Torrent) *TorrentView {
 	}
 	v.Stats = LiveStats{
 		Progress:       progress,
-		Downloaded:     stats.BytesReadData.Int64(),
-		Uploaded:       stats.BytesWrittenData.Int64(),
+		Downloaded:     rec.DownloadedBytes + stats.BytesReadData.Int64() - flushedDown,
+		Uploaded:       rec.UploadedBytes + stats.BytesWrittenData.Int64() - flushedUp,
 		DownloadRate:   0,
 		UploadRate:     0,
 		Peers:          stats.ActivePeers,

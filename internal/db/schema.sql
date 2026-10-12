@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS torrents (
     error_message TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
+    uploaded_bytes INTEGER NOT NULL DEFAULT 0,
+    downloaded_bytes INTEGER NOT NULL DEFAULT 0,
     UNIQUE (owner_id, info_hash)
 );
 
