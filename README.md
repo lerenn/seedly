@@ -109,6 +109,8 @@ Then upload `.testdata/hello.torrent` in the UI while the webseed server is runn
 | `SEEDLY_WEB_PATH` | `web/dist` | Built SPA directory |
 | `SEEDLY_SESSION_TTL` | `168h` | Session lifetime |
 | `SEEDLY_COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
+| `SEEDLY_LOGIN_MAX_FAILURES` | `5` | Failed logins (web and FTP) before an IP is banned; `0` disables |
+| `SEEDLY_LOGIN_BAN` | `15m` | Ban duration and failure-counting window |
 | `SEEDLY_FTP_ENABLED` | `false` | Enable the FTP/FTPS server |
 | `SEEDLY_FTP_LISTEN` | `:2121` | FTP control listen address |
 | `SEEDLY_FTP_PUBLIC_HOST` | *(empty)* | IP or hostname announced in passive replies |
