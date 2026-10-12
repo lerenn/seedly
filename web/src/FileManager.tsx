@@ -10,7 +10,7 @@ function parent(dir: string): string {
   return i <= 0 ? '/' : dir.slice(0, i)
 }
 
-export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: () => void }) {
+export function FileManager({ torrentId }: { torrentId: number }) {
   const [dir, setDir] = useState('/')
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [writable, setWritable] = useState(false)
@@ -20,7 +20,7 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
   const load = useCallback(
     async (path: string) => {
       try {
-        const res = await api.listFiles(path, ownerId)
+        const res = await api.listFiles(torrentId, path)
         setDir(res.path)
         setEntries(res.entries)
         setWritable(res.writable)
@@ -29,7 +29,7 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
         setError(err instanceof Error ? err.message : 'Could not list files')
       }
     },
-    [ownerId],
+    [torrentId],
   )
 
   useEffect(() => {
@@ -51,19 +51,8 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
   const crumbs = dir === '/' ? [] : dir.slice(1).split('/')
 
   return (
-    <aside className="detail file-manager">
-      <div className="detail-header">
-        <h2>Files</h2>
-        <button
-          type="button"
-          className="detail-close"
-          aria-label="Close file manager"
-          title="Close"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
+    <section className="file-manager">
+      <h3>Files</h3>
 
       <nav className="fm-crumbs" aria-label="Path">
         <button type="button" onClick={() => void load('/')}>
@@ -86,28 +75,26 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
             <input
               type="file"
               multiple
-              disabled={busy || dir === '/'}
+              disabled={busy}
               onChange={(e) => {
                 const picked = Array.from(e.target.files ?? [])
                 e.target.value = ''
-                if (picked.length) void run(() => api.uploadFiles(dir, picked, ownerId))
+                if (picked.length) void run(() => api.uploadFiles(torrentId, dir, picked))
               }}
             />
           </label>
           <button
             type="button"
-            disabled={busy || dir === '/'}
+            disabled={busy}
             onClick={() => {
               const name = prompt('Folder name')?.trim()
-              if (name) void run(() => api.mkdir(join(dir, name), ownerId))
+              if (name) void run(() => api.mkdir(torrentId, join(dir, name)))
             }}
           >
             New folder
           </button>
         </div>
-      ) : (
-        <p className="muted fm-note">Read-only</p>
-      )}
+      ) : null}
 
       {error ? <p className="error">{error}</p> : null}
 
@@ -128,7 +115,7 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
                   📁 {e.name}
                 </button>
               ) : (
-                <a className="fm-name" href={api.fileDownloadUrl(full, ownerId)} download>
+                <a className="fm-name" href={api.fileDownloadUrl(torrentId, full)} download>
                   📄 {e.name}
                 </a>
               )}
@@ -141,7 +128,7 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
                     onClick={() => {
                       const to = prompt('New name', e.name)?.trim()
                       if (to && to !== e.name) {
-                        void run(() => api.renameFile(full, join(dir, to), ownerId))
+                        void run(() => api.renameFile(torrentId, full, join(dir, to)))
                       }
                     }}
                   >
@@ -152,7 +139,7 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
                     className="danger"
                     disabled={busy}
                     onClick={() => {
-                      if (confirm(`Delete “${e.name}”?`)) void run(() => api.deleteFile(full, ownerId))
+                      if (confirm(`Delete “${e.name}”?`)) void run(() => api.deleteFile(torrentId, full))
                     }}
                   >
                     Delete
@@ -164,6 +151,6 @@ export function FileManager({ ownerId, onClose }: { ownerId?: number; onClose: (
         })}
         {entries.length === 0 ? <li className="muted">Empty</li> : null}
       </ul>
-    </aside>
+    </section>
   )
 }

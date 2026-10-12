@@ -190,36 +190,37 @@ export const api = {
       body: JSON.stringify({ host }),
     }),
   disk: () => request<DiskUsage>('/api/disk'),
-  listFiles: (path: string, ownerId?: number) =>
-    request<FileListing>(`/api/files?${fileQuery(path, ownerId)}`),
-  fileDownloadUrl: (path: string, ownerId?: number) =>
-    `/api/files/download?${fileQuery(path, ownerId)}`,
-  uploadFiles: async (dir: string, files: File[], ownerId?: number) => {
+  listFiles: (torrentId: number, path: string) =>
+    request<FileListing>(`/api/torrents/${torrentId}/files?${fileQuery(path)}`),
+  fileDownloadUrl: (torrentId: number, path: string) =>
+    `/api/torrents/${torrentId}/files/download?${fileQuery(path)}`,
+  uploadFiles: (torrentId: number, dir: string, files: File[]) => {
     const fd = new FormData()
     for (const f of files) fd.append('files', f)
-    return request<{ uploaded: number }>(`/api/files/upload?${fileQuery(dir, ownerId)}`, {
+    return request<{ uploaded: number }>(`/api/torrents/${torrentId}/files/upload?${fileQuery(dir)}`, {
       method: 'POST',
       body: fd,
     })
   },
-  mkdir: (path: string, ownerId?: number) =>
-    request<{ status: string }>(`/api/files/mkdir?${fileQuery('', ownerId)}`, {
+  mkdir: (torrentId: number, path: string) =>
+    request<{ status: string }>(`/api/torrents/${torrentId}/files/mkdir`, {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
-  renameFile: (from: string, to: string, ownerId?: number) =>
-    request<{ status: string }>(`/api/files/rename?${fileQuery('', ownerId)}`, {
+  renameFile: (torrentId: number, from: string, to: string) =>
+    request<{ status: string }>(`/api/torrents/${torrentId}/files/rename`, {
       method: 'POST',
       body: JSON.stringify({ from, to }),
     }),
-  deleteFile: (path: string, ownerId?: number) =>
-    request<{ status: string }>(`/api/files?${fileQuery(path, ownerId)}`, { method: 'DELETE' }),
+  deleteFile: (torrentId: number, path: string) =>
+    request<{ status: string }>(`/api/torrents/${torrentId}/files?${fileQuery(path)}`, {
+      method: 'DELETE',
+    }),
 }
 
-function fileQuery(path: string, ownerId?: number): string {
+function fileQuery(path: string): string {
   const q = new URLSearchParams()
   if (path) q.set('path', path)
-  if (ownerId != null) q.set('owner_id', String(ownerId))
   return q.toString()
 }
 

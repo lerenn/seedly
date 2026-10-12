@@ -152,7 +152,6 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
   const [viewOwnerId, setViewOwnerId] = useState<number>(user.id)
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [filesOpen, setFilesOpen] = useState(false)
   const [error, setError] = useState('')
   const [uploadFailures, setUploadFailures] = useState<UploadFailure[]>([])
   const [disk, setDisk] = useState<DiskUsage | null>(null)
@@ -423,7 +422,6 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                   {filter !== 'all' ? ` · ${filter}` : ''}
                 </span>
               </div>
-              <div className="topbar-actions">
                 <label className="add-torrent">
                   <span>+ Add torrents</span>
                   <input
@@ -436,18 +434,6 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                     }}
                   />
                 </label>
-                <button
-                  type="button"
-                  className={filesOpen ? 'files-toggle active' : 'files-toggle'}
-                  aria-pressed={filesOpen}
-                  onClick={() => {
-                    setFilesOpen((o) => !o)
-                    setSelectedId(null)
-                  }}
-                >
-                  Files
-                </button>
-              </div>
             </header>
 
             {error ? <p className="error banner">{error}</p> : null}
@@ -476,11 +462,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
               </div>
             ) : null}
 
-            <div
-              className={
-                filesOpen ? 'content files-open' : selected ? 'content' : 'content no-detail'
-              }
-            >
+            <div className={selected ? 'content' : 'content no-detail'}>
               <div className="torrent-list">
                 {visible.length === 0 ? (
                   <div className="empty">No torrents in this view. Add a .torrent to get started.</div>
@@ -504,10 +486,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                         <tr
                           key={t.id}
                           className={selectedId === t.id ? 'selected' : undefined}
-                          onClick={() => {
-                            setSelectedId(t.id)
-                            setFilesOpen(false)
-                          }}
+                          onClick={() => setSelectedId(t.id)}
                         >
                           <td className="col-name">
                             <div className="name">{t.name}</div>
@@ -535,13 +514,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                 )}
               </div>
 
-              {filesOpen ? (
-                <FileManager
-                  key={viewOwnerId}
-                  ownerId={isAdmin && viewOwnerId !== user.id ? viewOwnerId : undefined}
-                  onClose={() => setFilesOpen(false)}
-                />
-              ) : selected ? (
+              {selected ? (
                 <aside className="detail">
                   <div className="detail-header">
                     <h2>{selected.name}</h2>
@@ -633,6 +606,7 @@ function Dashboard({ user: initialUser, onLogout }: { user: User; onLogout: () =
                       Delete
                     </button>
                   </div>
+                  <FileManager key={selected.id} torrentId={selected.id} />
                 </aside>
               ) : null}
             </div>
