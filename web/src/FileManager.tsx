@@ -92,6 +92,20 @@ export function FileManager({ torrentId, zipUrl }: { torrentId: number; zipUrl?:
 
   const crumbs = dir === '/' ? [] : dir.slice(1).split('/')
 
+  const only = dir === '/' && entries.length === 1 && !entries[0].is_dir ? entries[0] : null
+  if (only) {
+    return (
+      <section className="file-manager">
+        <h3>Files</h3>
+        <div className="fm-downloads">
+          <a className="button" href={api.fileDownloadUrl(torrentId, join('/', only.name))} download>
+            Download
+          </a>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="file-manager">
       <h3>Files</h3>
